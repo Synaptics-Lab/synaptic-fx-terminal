@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ExternalLink, Search, Filter, Activity, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { ExternalLink, Search, Activity, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
 import gsap from "gsap";
+import type { FDC3Channel } from "@/lib/connector/solana-finos-bridge";
 
 export interface BlotterRow {
   id: string;
@@ -17,6 +18,7 @@ export interface BlotterRow {
   txSignature: string;
   explorerUrl: string;
   status: "PENDING" | "CONFIRMED" | "FAILED";
+  channel?: FDC3Channel;
 }
 
 interface OrderBlotterProps {
@@ -27,6 +29,7 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "CONFIRMED" | "PENDING" | "FAILED">("ALL");
+  const [channelFilter, setChannelFilter] = useState<"ALL" | FDC3Channel>("ALL");
 
   useEffect(() => {
     if (!tbodyRef.current) return;
@@ -42,6 +45,7 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
 
   const filteredRows = rows.filter((r) => {
     const matchesStatus = statusFilter === "ALL" || r.status === statusFilter;
+    const matchesChannel = channelFilter === "ALL" || (r.channel || "global") === channelFilter;
     const matchesSearch =
       searchTerm === "" ||
       r.pair.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -49,7 +53,7 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
       r.uetr.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.debtorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.creditorName.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesStatus && matchesSearch;
+    return matchesStatus && matchesChannel && matchesSearch;
   });
 
   const confirmedCount = rows.filter((r) => r.status === "CONFIRMED").length;
@@ -57,7 +61,7 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a]">
       {/* Blotter Top Bar */}
-      <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0d0d0d]">
+      <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0d0d0d] gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 text-amber-400" />
@@ -78,12 +82,40 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
         </div>
 
         {/* Filter and Search controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* FDC3 Channel Filter Tabs */}
+          <div className="flex border border-[#222] bg-[#111] text-[9px] font-mono items-center">
+            <span className="px-1.5 text-zinc-500 uppercase text-[8px]">CH:</span>
+            {(["ALL", "global", "red", "green", "blue"] as const).map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => setChannelFilter(ch)}
+                className={`px-1.5 py-0.5 uppercase transition-colors ${
+                  channelFilter === ch
+                    ? ch === "global"
+                      ? "bg-amber-500/30 text-amber-300 font-bold"
+                      : ch === "red"
+                      ? "bg-rose-500/30 text-rose-300 font-bold"
+                      : ch === "green"
+                      ? "bg-emerald-500/30 text-emerald-300 font-bold"
+                      : ch === "blue"
+                      ? "bg-sky-500/30 text-sky-300 font-bold"
+                      : "bg-zinc-800 text-white font-bold"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {ch}
+              </button>
+            ))}
+          </div>
+
           {/* Quick Status Filter Tabs */}
           <div className="flex border border-[#222] bg-[#111] text-[9px] font-mono">
             {(["ALL", "CONFIRMED", "PENDING", "FAILED"] as const).map((st) => (
               <button
                 key={st}
+                type="button"
                 onClick={() => setStatusFilter(st)}
                 className={`px-2 py-0.5 uppercase transition-colors ${
                   statusFilter === st
@@ -103,7 +135,7 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="FILTER BLOTTER..."
-              className="w-44 bg-[#111] border border-[#222] text-zinc-300 text-[10px] font-mono px-2 py-0.5 pl-6 focus:outline-none focus:border-amber-500/50 rounded-none placeholder:text-zinc-600 uppercase"
+              className="w-36 bg-[#111] border border-[#222] text-zinc-300 text-[10px] font-mono px-2 py-0.5 pl-6 focus:outline-none focus:border-amber-500/50 rounded-none placeholder:text-zinc-600 uppercase"
             />
             <Search className="w-3 h-3 text-zinc-600 absolute left-1.5 top-1.5" />
           </div>
@@ -115,21 +147,22 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
         <table className="w-full text-[11px] font-mono border-collapse">
           <thead className="sticky top-0 bg-[#0e0e0e] border-b border-[#1a1a1a] z-10 shadow-sm">
             <tr className="text-zinc-500 text-left text-[9.5px] uppercase tracking-wider">
-              <th className="px-3 py-1.5 font-normal">TIME</th>
-              <th className="px-3 py-1.5 font-normal">MSG ID</th>
-              <th className="px-3 py-1.5 font-normal">UETR</th>
-              <th className="px-3 py-1.5 font-normal">PAIR</th>
-              <th className="px-3 py-1.5 font-normal text-right">GROSS AMOUNT</th>
-              <th className="px-3 py-1.5 font-normal">DEBTOR</th>
-              <th className="px-3 py-1.5 font-normal">CREDITOR</th>
-              <th className="px-3 py-1.5 font-normal">SOLANA TX</th>
-              <th className="px-3 py-1.5 font-normal text-center">STATUS</th>
+              <th className="px-2.5 py-1.5 font-normal">TIME</th>
+              <th className="px-2 py-1.5 font-normal">FDC3</th>
+              <th className="px-2.5 py-1.5 font-normal">MSG ID</th>
+              <th className="px-2.5 py-1.5 font-normal">UETR</th>
+              <th className="px-2.5 py-1.5 font-normal">PAIR</th>
+              <th className="px-2.5 py-1.5 font-normal text-right">GROSS AMOUNT</th>
+              <th className="px-2.5 py-1.5 font-normal">DEBTOR</th>
+              <th className="px-2.5 py-1.5 font-normal">CREDITOR</th>
+              <th className="px-2.5 py-1.5 font-normal">SOLANA TX</th>
+              <th className="px-2.5 py-1.5 font-normal text-center">STATUS</th>
             </tr>
           </thead>
           <tbody ref={tbodyRef}>
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-10 text-center text-zinc-600 font-mono text-[11px]">
+                <td colSpan={10} className="px-3 py-10 text-center text-zinc-600 font-mono text-[11px]">
                   {rows.length === 0
                     ? "// No settlement transactions recorded yet. Raise an FDC3 StartPayment intent."
                     : "// No transactions match the selected filter."}
@@ -141,65 +174,80 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
                 key={row.id}
                 className="border-b border-[#141414] hover:bg-white/[0.02] transition-colors group"
               >
-                <td className="px-3 py-1.5 text-zinc-500 whitespace-nowrap">{row.timestamp}</td>
-                <td className="px-3 py-1.5 text-zinc-300 whitespace-nowrap">
+                <td className="px-2.5 py-1.5 text-zinc-500 whitespace-nowrap">{row.timestamp}</td>
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  <span
+                    className={`px-1.5 py-0.5 text-[8.5px] font-mono font-bold uppercase border ${
+                      row.channel === "red"
+                        ? "bg-rose-950/40 border-rose-800 text-rose-300"
+                        : row.channel === "green"
+                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-300"
+                        : row.channel === "blue"
+                        ? "bg-sky-950/40 border-sky-800 text-sky-300"
+                        : "bg-amber-950/40 border-amber-800 text-amber-300"
+                    }`}
+                  >
+                    {row.channel || "global"}
+                  </span>
+                </td>
+                <td className="px-2.5 py-1.5 text-zinc-300 whitespace-nowrap">
                   <Tooltip content={row.msgId} copyable copyText={row.msgId}>
                     <span className="cursor-help hover:text-white transition-colors">
                       {row.msgId}
                     </span>
                   </Tooltip>
                 </td>
-                <td className="px-3 py-1.5 text-zinc-400 whitespace-nowrap">
+                <td className="px-2.5 py-1.5 text-zinc-400 whitespace-nowrap">
                   <Tooltip content={row.uetr} copyable copyText={row.uetr}>
                     <span className="cursor-help underline underline-offset-2 decoration-zinc-700 hover:decoration-amber-400 transition-colors">
-                      {row.uetr.slice(0, 10)}…
+                      {row.uetr.slice(0, 8)}…
                     </span>
                   </Tooltip>
                 </td>
-                <td className="px-3 py-1.5 font-bold text-amber-400 whitespace-nowrap">{row.pair}</td>
-                <td className="px-3 py-1.5 text-white font-semibold tabular-nums text-right whitespace-nowrap">
+                <td className="px-2.5 py-1.5 font-bold text-amber-400 whitespace-nowrap">{row.pair}</td>
+                <td className="px-2.5 py-1.5 text-white font-semibold tabular-nums text-right whitespace-nowrap">
                   {row.amount}
                 </td>
-                <td className="px-3 py-1.5 text-zinc-400 truncate max-w-[130px] whitespace-nowrap">
+                <td className="px-2.5 py-1.5 text-zinc-400 truncate max-w-[120px] whitespace-nowrap">
                   {row.debtorName}
                 </td>
-                <td className="px-3 py-1.5 text-zinc-400 truncate max-w-[130px] whitespace-nowrap">
+                <td className="px-2.5 py-1.5 text-zinc-400 truncate max-w-[120px] whitespace-nowrap">
                   {row.creditorName}
                 </td>
-                <td className="px-3 py-1.5 whitespace-nowrap">
+                <td className="px-2.5 py-1.5 whitespace-nowrap">
                   {row.txSignature ? (
-                    <Tooltip content={row.txSignature} copyable copyText={row.txSignature}>
-                      <a
-                        href={row.explorerUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sky-400 hover:text-sky-300 underline underline-offset-2 flex items-center gap-1 cursor-pointer"
-                      >
-                        <span>{row.txSignature.slice(0, 8)}…</span>
-                        <ExternalLink className="w-2.5 h-2.5 opacity-70" />
-                      </a>
-                    </Tooltip>
+                    <a
+                      href={row.explorerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-mono text-[10px] group/link"
+                    >
+                      <span className="underline underline-offset-2 decoration-sky-800 group-hover/link:decoration-sky-400">
+                        {row.txSignature.slice(0, 4)}…{row.txSignature.slice(-4)}
+                      </span>
+                      <ExternalLink className="w-2.5 h-2.5 text-sky-500 opacity-60 group-hover/link:opacity-100" />
+                    </a>
                   ) : (
-                    <span className="text-zinc-700">—</span>
+                    <span className="text-zinc-600">—</span>
                   )}
                 </td>
-                <td className="px-3 py-1.5 text-center whitespace-nowrap">
+                <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
                   {row.status === "CONFIRMED" && (
-                    <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-900/60 px-1.5 py-0.5">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 text-[9px] font-bold">
                       <CheckCircle2 className="w-2.5 h-2.5" />
-                      <span>CONFIRMED</span>
+                      SETTLED
                     </span>
                   )}
                   {row.status === "PENDING" && (
-                    <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-400 bg-amber-950/40 border border-amber-900/60 px-1.5 py-0.5 animate-pulse">
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>PENDING</span>
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900/60 text-[9px]">
+                      <Clock className="w-2.5 h-2.5 animate-spin" />
+                      IN FLIGHT
                     </span>
                   )}
                   {row.status === "FAILED" && (
-                    <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-rose-400 bg-rose-950/40 border border-rose-900/60 px-1.5 py-0.5">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-950/40 text-rose-400 border border-rose-900/60 text-[9px] font-bold">
                       <AlertTriangle className="w-2.5 h-2.5" />
-                      <span>FAILED</span>
+                      REJECTED
                     </span>
                   )}
                 </td>

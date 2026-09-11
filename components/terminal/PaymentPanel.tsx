@@ -36,13 +36,77 @@ const AMOUNT_PRESETS = [
   { label: "$25M", val: "25000000" },
 ];
 
+interface FDC3DeskConfig {
+  id: FDC3Channel;
+  label: string;
+  name: string;
+  role: string;
+  debtor: string;
+  creditor: string;
+  defaultPair: string;
+  defaultAmount: string;
+  badgeClass: string;
+  buttonClass: string;
+}
+
+const FDC3_DESK_CONFIGS: Record<FDC3Channel, FDC3DeskConfig> = {
+  global: {
+    id: "global",
+    label: "GLOBAL",
+    name: "General FX Floor",
+    role: "Floor-Wide Broadcast",
+    debtor: "Corporate Treasury Desk",
+    creditor: "Institutional Liquidity Desk",
+    defaultPair: "USD/KES",
+    defaultAmount: "2500000",
+    badgeClass: "text-amber-400 bg-amber-950/40 border-amber-800",
+    buttonClass: "bg-amber-400 text-black font-bold",
+  },
+  red: {
+    id: "red",
+    label: "RED",
+    name: "Autonomous AI Agent Desk",
+    role: "Algo AI Agent Lane (HFT)",
+    debtor: "Artemis AI Treasury Agent #042",
+    creditor: "Solana Automated Liquidity Vault",
+    defaultPair: "USD/KES",
+    defaultAmount: "1000000",
+    badgeClass: "text-rose-400 bg-rose-950/40 border-rose-800",
+    buttonClass: "bg-rose-500 text-white font-bold",
+  },
+  green: {
+    id: "green",
+    label: "GREEN",
+    name: "Corporate Treasury Desk",
+    role: "Multi-Million Bulk Settlement",
+    debtor: "Global Corporate Treasury Desk",
+    creditor: "Tier-1 Liquidity Provider Desk",
+    defaultPair: "EUR/USD",
+    defaultAmount: "25000000",
+    badgeClass: "text-emerald-400 bg-emerald-950/40 border-emerald-800",
+    buttonClass: "bg-emerald-500 text-black font-bold",
+  },
+  blue: {
+    id: "blue",
+    label: "BLUE",
+    name: "Sovereign Clearing Desk",
+    role: "Central Bank DPI (ZMW Corridor)",
+    debtor: "Sovereign DPI Settlement Node",
+    creditor: "Central Bank TSA Clearing Vault",
+    defaultPair: "USD/ZMW",
+    defaultAmount: "5000000",
+    badgeClass: "text-sky-400 bg-sky-950/40 border-sky-800",
+    buttonClass: "bg-sky-500 text-black font-bold",
+  },
+};
+
 export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [amount, setAmount] = useState("2500000");
   const [pair, setPair] = useState("USD/KES");
   const [channel, setChannel] = useState<FDC3Channel>("global");
-  const [debtorName, setDebtorName] = useState("Corporate Treasury Desk (Simulated)");
+  const [debtorName, setDebtorName] = useState("Corporate Treasury Desk");
   const [debtorAcct, setDebtorAcct] = useState("4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG");
-  const [creditorName, setCreditorName] = useState("Institutional Liquidity Desk (Simulated)");
+  const [creditorName, setCreditorName] = useState("Institutional Liquidity Desk");
   const [creditorAcct, setCreditorAcct] = useState("BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG");
   const [pacsXml, setPacsXml] = useState<string | null>(null);
   const [currentUetr, setCurrentUetr] = useState<string>("");
@@ -63,6 +127,17 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
   // Validation
   const cbprCheck = pacsXml ? validateCBPRPlus(pacsXml) : null;
+
+  const activeDesk = FDC3_DESK_CONFIGS[channel] || FDC3_DESK_CONFIGS.global;
+
+  const switchChannel = (newCh: FDC3Channel) => {
+    setChannel(newCh);
+    const cfg = FDC3_DESK_CONFIGS[newCh];
+    setDebtorName(cfg.debtor);
+    setCreditorName(cfg.creditor);
+    setPair(cfg.defaultPair);
+    setAmount(cfg.defaultAmount);
+  };
 
   const handleOpenReview = () => {
     if (numAmount <= 0) {
@@ -176,6 +251,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         txSignature: data.txSignature ?? "",
         explorerUrl: data.explorerUrl ?? "",
         status: data.error ? "FAILED" : "CONFIRMED",
+        channel,
       };
 
       onSettlement(blotterRow);
@@ -200,8 +276,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         setPacsXml(updatedXml);
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       setStatus("error");
-      const msg = err instanceof Error ? err.message : "Devnet settlement failed";
       setErrorMsg(msg);
     }
   };
@@ -218,35 +294,44 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       {/* LEFT: Input Form */}
       <div className="w-80 shrink-0 flex flex-col bg-[#0a0a0a]">
         {/* Panel Header */}
-        <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0c0c0c]">
-          <div className="flex items-center gap-1.5">
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            <span className="text-[10px] font-mono text-zinc-300 font-semibold tracking-widest uppercase">
+        <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0c0c0c] gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="text-[10px] font-mono text-zinc-200 font-semibold tracking-widest uppercase truncate">
               FDC3 StartPayment
             </span>
           </div>
 
-          {/* FDC3 Channel Selector Pill */}
-          <div className="flex items-center gap-1">
-            {(["global", "red", "green", "blue"] as FDC3Channel[]).map((ch) => (
-              <button
-                key={ch}
-                onClick={() => setChannel(ch)}
-                title={`FDC3 Channel: ${ch.toUpperCase()}`}
-                className={`w-2.5 h-2.5 rounded-none border transition-transform ${
-                  channel === ch ? "scale-125 border-white shadow-sm" : "border-transparent opacity-40 hover:opacity-100"
-                } ${
-                  ch === "global"
-                    ? "bg-amber-400"
-                    : ch === "red"
-                    ? "bg-rose-500"
-                    : ch === "green"
-                    ? "bg-emerald-500"
-                    : "bg-sky-500"
-                }`}
-              />
-            ))}
+          {/* Interactive FDC3 Channel Switcher */}
+          <div className="flex items-center gap-0.5 bg-[#141414] border border-[#222] p-0.5 shrink-0">
+            <span className="text-[8px] font-mono text-zinc-500 px-1 uppercase tracking-wider">CH:</span>
+            {(["global", "red", "green", "blue"] as FDC3Channel[]).map((ch) => {
+              const cfg = FDC3_DESK_CONFIGS[ch];
+              const isActive = channel === ch;
+              return (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => switchChannel(ch)}
+                  title={`Switch to ${cfg.name} (${cfg.role})`}
+                  className={`px-1.5 py-0.5 text-[8.5px] font-mono font-bold uppercase transition-all ${
+                    isActive ? cfg.buttonClass : "text-zinc-500 hover:text-zinc-300 bg-transparent"
+                  }`}
+                >
+                  {cfg.label}
+                </button>
+              );
+            })}
           </div>
+        </div>
+
+        {/* Active Desk Telemetry Readout */}
+        <div className={`px-3 py-1 border-b flex items-center justify-between text-[9px] font-mono ${activeDesk.badgeClass}`}>
+          <div className="flex items-center gap-1.5 truncate">
+            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse shrink-0" />
+            <span className="font-bold uppercase truncate">{activeDesk.name}</span>
+          </div>
+          <span className="text-[8px] opacity-80 uppercase shrink-0">{activeDesk.role}</span>
         </div>
 
         <div className="flex-1 p-3 flex flex-col gap-2 overflow-y-auto">
