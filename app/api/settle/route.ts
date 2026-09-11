@@ -1,52 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { Keypair } from "@solana/web3.js";
+import {
+  dispatchToken2022Fdc3Settlement,
+  type FDC3PaymentContext,
+} from "@/lib/connector/solana-finos-bridge";
 
-// In production: load from environment variable or hardware enclave (QuantumShield)
-// For devnet demo: generate a fresh keypair and airdrop
 function getDemoKeypair(): Keypair {
   if (process.env.SOLANA_DEMO_PRIVATE_KEY) {
     const bytes = Buffer.from(process.env.SOLANA_DEMO_PRIVATE_KEY, "base64");
     return Keypair.fromSecretKey(bytes);
   }
-  // For demo: use a fixed seed so address is predictable
+  // Deterministic demo seed
   const seed = Buffer.alloc(32);
   seed.write("synaptic-fx-terminal-devnet-demo");
   return Keypair.fromSeed(seed);
 }
 
-const DEMO_RECIPIENT = "11111111111111111111111111111112"; // SystemProgram ID as demo recipient
-
 export async function POST(req: NextRequest) {
   try {
-    const { uetr, amount } = await req.json();
+    const body = await req.json();
+    const { uetr, amount, msgId = "SYN-FINOS-SETTLE", pair = "USD/KES", rate = 129.42 } = body;
 
     if (!uetr || !amount) {
       return NextResponse.json({ error: "Missing uetr or amount" }, { status: 400 });
     }
 
-    const { dispatchToken22Settlement, airdropDevnet, DEVNET_RPC } = await import(
-      "@/lib/solana/token22-settler"
-    );
-    const { Connection } = await import("@solana/web3.js");
+    const keypair = getDemoKeypair();
 
-    const fromKeypair = getDemoKeypair();
-    const connection = new Connection(DEVNET_RPC, "confirmed");
+    const ctx: FDC3PaymentContext = {
+      type: "fdc3.paymentContext",
+      amount: parseFloat(amount),
+      currency: pair.split("/")[0] || "USD",
+      pair,
+      rate: parseFloat(rate),
+      debtor: {
+        name: body.debtorName || "Corporate Treasury Desk",
+        account: body.debtorAcct || "syn1qyz7g8v4r3t2u1x9w",
+      },
+      creditor: {
+        name: body.creditorName || "Reserve Bank Institutional Node",
+        account: body.creditorAcct || "syn1qqy7x2w5r6t1u3v8",
+      },
+      networkRouting: {
+        rail: "Solana Token-2022",
+        channel: body.channel || "global",
+        uetr,
+      },
+    };
 
-    // Check balance, airdrop if needed
-    const balance = await connection.getBalance(fromKeypair.publicKey);
-    if (balance < 0.01 * LAMPORTS_PER_SOL) {
-      await airdropDevnet(fromKeypair, 1);
-    }
+    const settlement = await dispatchToken2022Fdc3Settlement(ctx, keypair, uetr, msgId);
 
-    // Settle: transfer 1000 lamports with UETR memo (symbolic — real $ would be Token-2022 SPL)
-    const receipt = await dispatchToken22Settlement({
+    return NextResponse.json({
+      ok: true,
       uetr,
-      amountLamports: 1000, // symbolic on devnet
-      fromKeypair,
-      toAddress: DEMO_RECIPIENT,
+      msgId,
+      txSignature: settlement.txSignature,
+      slot: settlement.slot,
+      confirmationStatus: "confirmed",
+      explorerUrl: settlement.explorerUrl,
+      rail: "Solana Token-2022 (MemoTransfer)",
+      timestamp: new Date().toISOString(),
     });
-
-    return NextResponse.json(receipt);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[settle] Error:", msg);
