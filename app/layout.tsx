@@ -1,11 +1,5 @@
 import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
-});
 
 export const metadata: Metadata = {
   title: "Synaptic FX Terminal | ISO 20022 × Solana",
@@ -19,8 +13,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${geistMono.variable} font-mono antialiased bg-[#0a0a0a] text-white`}>
+    <html lang="en">
+      <body
+        className="antialiased bg-[#0a0a0a] text-white"
+        style={{
+          fontFamily:
+            "'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'SF Mono', 'Consolas', monospace",
+        }}
+      >
         {children}
       </body>
     </html>

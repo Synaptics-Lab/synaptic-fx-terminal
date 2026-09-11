@@ -5,17 +5,12 @@
   --foreground: #fafafa;
 }
 
-* {
-  box-sizing: border-box;
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Thin scrollbar for terminal aesthetic */
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
