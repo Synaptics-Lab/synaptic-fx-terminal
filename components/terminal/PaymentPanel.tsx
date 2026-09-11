@@ -41,9 +41,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [pair, setPair] = useState("USD/KES");
   const [channel, setChannel] = useState<FDC3Channel>("global");
   const [debtorName, setDebtorName] = useState("Citigroup Corporate Treasury");
-  const [debtorAcct, setDebtorAcct] = useState("syn1qyz7g8v4r3t2u1x9w");
+  const [debtorAcct, setDebtorAcct] = useState("4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG");
   const [creditorName, setCreditorName] = useState("Standard Chartered Nairobi Desk");
-  const [creditorAcct, setCreditorAcct] = useState("syn1qqy7x2w5r6t1u3v8");
+  const [creditorAcct, setCreditorAcct] = useState("BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG");
   const [pacsXml, setPacsXml] = useState<string | null>(null);
   const [currentUetr, setCurrentUetr] = useState<string>("");
   const [currentMsgId, setCurrentMsgId] = useState<string>("");
@@ -358,21 +358,21 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
               className="w-full bg-[#111111] border border-[#222222] text-zinc-200 text-[10.5px] font-mono px-2.5 py-1.5 rounded-none focus:outline-none focus:border-zinc-500"
             />
           </Field>
-          <Field label="Debtor L1 Account">
+          <Field label="Debtor Token-2022 ATA (Treasury Desk)">
             <input
               value={debtorAcct}
               onChange={(e) => setDebtorAcct(e.target.value)}
               className="w-full bg-[#111111] border border-[#222222] text-zinc-400 text-[10px] font-mono px-2.5 py-1.5 rounded-none focus:outline-none focus:border-zinc-500"
             />
           </Field>
-          <Field label="Creditor Entity (Reserve Bank / Beneficiary)">
+          <Field label="Creditor Entity (Reserve Bank / Institutional Desk)">
             <input
               value={creditorName}
               onChange={(e) => setCreditorName(e.target.value)}
               className="w-full bg-[#111111] border border-[#222222] text-zinc-200 text-[10.5px] font-mono px-2.5 py-1.5 rounded-none focus:outline-none focus:border-zinc-500"
             />
           </Field>
-          <Field label="Creditor L1 Account">
+          <Field label="Creditor Token-2022 Account (RequiredMemoTransfers Guard)">
             <input
               value={creditorAcct}
               onChange={(e) => setCreditorAcct(e.target.value)}

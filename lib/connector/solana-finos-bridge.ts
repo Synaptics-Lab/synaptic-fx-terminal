@@ -304,47 +304,33 @@ export class SolanaFDC3DeskBridge {
 
 export const solanaFdc3Desk = new SolanaFDC3DeskBridge();
 
-// ─── Solana Token-2022 Settlement Dispatcher ──────────────────────────────────
+import {
+  dispatchToken22Settlement,
+  type Token22SettlementReceipt,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_2022_USDS_MINT,
+  INSTITUTIONAL_ACCOUNTS,
+  DEVNET_RPC,
+} from "../solana/token22-settler";
 
-export const DEVNET_RPC = "https://api.devnet.solana.com";
-const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
-const DEMO_RECIPIENT = "11111111111111111111111111111112";
+export {
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_2022_USDS_MINT,
+  INSTITUTIONAL_ACCOUNTS,
+  DEVNET_RPC,
+};
 
 export async function dispatchToken2022Fdc3Settlement(
   ctx: FDC3PaymentContext,
   keypair: Keypair,
   uetr: string,
   msgId: string
-): Promise<{ txSignature: string; slot: number; explorerUrl: string }> {
-  const connection = new Connection(DEVNET_RPC, "confirmed");
-  const toPubkey = new PublicKey(DEMO_RECIPIENT);
-
-  // 1. Base Transfer instruction (Token-2022 representation on Devnet)
-  const transaction = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: keypair.publicKey,
-      toPubkey,
-      lamports: 1000, // symbolic 1000 lamports for demo
-    })
-  );
-
-  // 2. Token-2022 MemoTransfer extension simulation:
-  // Embeds the ISO 20022 UETR, Message ID, Pair, and Amount into the on-chain ledger
-  const memoPayload = `ISO20022:pacs.008:UETR:${uetr}:MSG:${msgId}:PAIR:${ctx.pair}:AMT:${ctx.amount}:TSA:0.50%`;
-  transaction.add(
-    new TransactionInstruction({
-      keys: [{ pubkey: keypair.publicKey, isSigner: true, isWritable: false }],
-      programId: MEMO_PROGRAM_ID,
-      data: Buffer.from(memoPayload, "utf-8"),
-    })
-  );
-
-  const txSignature = await sendAndConfirmTransaction(connection, transaction, [keypair]);
-  const slot = await connection.getSlot();
-
-  return {
-    txSignature,
-    slot,
-    explorerUrl: `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`,
-  };
+): Promise<Token22SettlementReceipt> {
+  return await dispatchToken22Settlement({
+    uetr,
+    msgId,
+    amount: ctx.amount,
+    fromKeypair: keypair,
+  });
 }
+

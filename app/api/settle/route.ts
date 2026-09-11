@@ -58,8 +58,15 @@ export async function POST(req: NextRequest) {
       slot: settlement.slot,
       confirmationStatus: "confirmed",
       explorerUrl: settlement.explorerUrl,
-      rail: "Solana Token-2022 (MemoTransfer)",
-      timestamp: new Date().toISOString(),
+      rail: "Solana Token-2022 (RequiredMemoTransfers)",
+      mint: settlement.mint,
+      sourceAccount: settlement.sourceAccount,
+      destinationAccount: settlement.destinationAccount,
+      token2022Program: settlement.token2022Program,
+      memoProgram: settlement.memoProgram,
+      postDebtorBalance: settlement.postDebtorBalance,
+      postCreditorBalance: settlement.postCreditorBalance,
+      timestamp: settlement.timestamp,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

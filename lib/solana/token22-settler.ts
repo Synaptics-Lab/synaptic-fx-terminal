@@ -1,7 +1,7 @@
 /**
  * Solana Token-2022 Settlement Dispatcher
- * Sends SPL Token-2022 transfers with MemoTransfer extension.
- * The ISO 20022 UETR is embedded in the on-chain memo — cryptographically
+ * Sends real SPL Token-2022 transferChecked instructions with MemoTransfer extension.
+ * The ISO 20022 UETR & MsgId are embedded in the on-chain memo — cryptographically
  * linking the traditional finance message to the DLT settlement.
  */
 
@@ -9,94 +9,145 @@ import {
   Connection,
   PublicKey,
   Transaction,
-  SystemProgram,
-  LAMPORTS_PER_SOL,
+  TransactionInstruction,
   sendAndConfirmTransaction,
   Keypair,
 } from "@solana/web3.js";
+import {
+  createTransferCheckedInstruction,
+  getAccount,
+} from "@solana/spl-token";
+import {
+  DEVNET_RPC,
+  TOKEN_2022_PROGRAM_ID,
+  MEMO_PROGRAM_ID,
+  TOKEN_2022_USDS_MINT,
+  TOKEN_2022_DECIMALS,
+  INSTITUTIONAL_ACCOUNTS,
+} from "./token2022-config";
 
-export const DEVNET_RPC = "https://api.devnet.solana.com";
+export {
+  DEVNET_RPC,
+  TOKEN_2022_PROGRAM_ID,
+  MEMO_PROGRAM_ID,
+  TOKEN_2022_USDS_MINT,
+  TOKEN_2022_DECIMALS,
+  INSTITUTIONAL_ACCOUNTS,
+};
 
-export interface SettlementParams {
+export interface Token22SettlementParams {
   uetr: string;
-  amountLamports: number;
+  msgId: string;
+  amount: number; // UI Amount (e.g. 2500000.00)
   fromKeypair: Keypair;
-  toAddress: string;
+  destinationAccount?: PublicKey;
 }
 
-export interface SettlementReceipt {
+export interface Token22SettlementReceipt {
+  ok: boolean;
   txSignature: string;
   slot: number;
   confirmationStatus: "confirmed" | "finalized";
   explorerUrl: string;
-  lamports: number;
+  amount: number;
   uetr: string;
+  msgId: string;
+  mint: string;
+  sourceAccount: string;
+  destinationAccount: string;
+  memoProgram: string;
+  token2022Program: string;
   timestamp: string;
+  postDebtorBalance: string;
+  postCreditorBalance: string;
+}
+
+export async function getToken2022Balances(connection: Connection): Promise<{
+  debtorBalance: string;
+  creditorBalance: string;
+}> {
+  try {
+    const debtorInfo = await connection.getTokenAccountBalance(
+      INSTITUTIONAL_ACCOUNTS.debtor.token2022Account
+    );
+    const creditorInfo = await connection.getTokenAccountBalance(
+      INSTITUTIONAL_ACCOUNTS.creditor.token2022Account
+    );
+    return {
+      debtorBalance: debtorInfo.value.uiAmountString || "0",
+      creditorBalance: creditorInfo.value.uiAmountString || "0",
+    };
+  } catch {
+    return { debtorBalance: "N/A", creditorBalance: "N/A" };
+  }
 }
 
 /**
- * Dispatches a devnet SOL transfer with the UETR embedded via memo.
- * In production: use Token-2022 MemoTransfer extension on SPL tokens.
+ * Dispatches a true on-chain SPL Token-2022 settlement with ISO 20022 memo linkage.
+ * Target account enforces RequiredMemoTransfers at the VM consensus level.
  */
 export async function dispatchToken22Settlement(
-  params: SettlementParams
-): Promise<SettlementReceipt> {
+  params: Token22SettlementParams
+): Promise<Token22SettlementReceipt> {
   const connection = new Connection(DEVNET_RPC, "confirmed");
 
-  const toPubkey = new PublicKey(params.toAddress);
+  const sourceAccount = INSTITUTIONAL_ACCOUNTS.debtor.token2022Account;
+  const destinationAccount =
+    params.destinationAccount || INSTITUTIONAL_ACCOUNTS.creditor.token2022Account;
 
-  // Build transaction: SOL transfer (Token-2022 MemoTransfer in production)
-  const transaction = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: params.fromKeypair.publicKey,
-      toPubkey,
-      lamports: params.amountLamports,
-    })
+  // Convert UI amount (e.g. 2,500,000.00) to base units (6 decimals)
+  const baseUnits = BigInt(Math.round(params.amount * 10 ** TOKEN_2022_DECIMALS));
+
+  // 1. Mandatory ISO 20022 Memo instruction (Satisfies Token-2022 RequiredMemoTransfers)
+  const memoText = `ISO20022:pacs.008:UETR:${params.uetr}:MSG:${params.msgId}:AMT:${params.amount}:TSA:0.50%`;
+  const memoInstruction = new TransactionInstruction({
+    keys: [{ pubkey: params.fromKeypair.publicKey, isSigner: true, isWritable: false }],
+    programId: MEMO_PROGRAM_ID,
+    data: Buffer.from(memoText, "utf-8"),
+  });
+
+  // 2. Token-2022 TransferChecked instruction
+  const transferInstruction = createTransferCheckedInstruction(
+    sourceAccount,
+    TOKEN_2022_USDS_MINT,
+    destinationAccount,
+    params.fromKeypair.publicKey,
+    baseUnits,
+    TOKEN_2022_DECIMALS,
+    [],
+    TOKEN_2022_PROGRAM_ID
   );
 
-  // Add memo with UETR for ISO 20022 linkage
-  // In production: use @solana/spl-memo or Token-2022 MemoTransfer extension
-  const { TransactionInstruction } = await import("@solana/web3.js");
-  const MEMO_PROGRAM_ID = new PublicKey(
-    "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
-  );
-  transaction.add(
-    new TransactionInstruction({
-      keys: [{ pubkey: params.fromKeypair.publicKey, isSigner: true, isWritable: false }],
-      programId: MEMO_PROGRAM_ID,
-      data: Buffer.from(`ISO20022:pacs.008:UETR:${params.uetr}`, "utf-8"),
-    })
+  const transaction = new Transaction().add(memoInstruction, transferInstruction);
+
+  const txSignature = await sendAndConfirmTransaction(
+    connection,
+    transaction,
+    [params.fromKeypair],
+    { commitment: "confirmed" }
   );
 
-  const txSignature = await sendAndConfirmTransaction(connection, transaction, [
-    params.fromKeypair,
-  ]);
+  const slot = await connection.getSlot();
 
-  const latestSlot = await connection.getSlot();
+  // Retrieve post-settlement balances
+  const balances = await getToken2022Balances(connection);
 
   return {
+    ok: true,
     txSignature,
-    slot: latestSlot,
+    slot,
     confirmationStatus: "confirmed",
     explorerUrl: `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`,
-    lamports: params.amountLamports,
+    amount: params.amount,
     uetr: params.uetr,
+    msgId: params.msgId,
+    mint: TOKEN_2022_USDS_MINT.toBase58(),
+    sourceAccount: sourceAccount.toBase58(),
+    destinationAccount: destinationAccount.toBase58(),
+    memoProgram: MEMO_PROGRAM_ID.toBase58(),
+    token2022Program: TOKEN_2022_PROGRAM_ID.toBase58(),
     timestamp: new Date().toISOString(),
+    postDebtorBalance: balances.debtorBalance,
+    postCreditorBalance: balances.creditorBalance,
   };
-}
-
-/**
- * Airdrop devnet SOL to a keypair for demo purposes.
- */
-export async function airdropDevnet(
-  keypair: Keypair,
-  sol = 1
-): Promise<string> {
-  const connection = new Connection(DEVNET_RPC, "confirmed");
-  const sig = await connection.requestAirdrop(
-    keypair.publicKey,
-    sol * LAMPORTS_PER_SOL
-  );
-  await connection.confirmTransaction(sig);
-  return sig;
 }
