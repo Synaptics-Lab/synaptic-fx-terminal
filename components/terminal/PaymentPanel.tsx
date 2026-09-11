@@ -9,6 +9,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { Copy, Check, ExternalLink, Zap, Info } from "lucide-react";
 import gsap from "gsap";
 import type { BlotterRow } from "./OrderBlotter";
+import { XmlViewer } from "./XmlViewer";
 
 interface PaymentPanelProps {
   onSettlement: (row: BlotterRow) => void;
@@ -27,7 +28,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [copiedXml, setCopiedXml] = useState(false);
   const [lastTxSig, setLastTxSig] = useState<string | null>(null);
   const [lastExplorerUrl, setLastExplorerUrl] = useState<string | null>(null);
-  const xmlRef = useRef<HTMLPreElement>(null);
+  const xmlRef = useRef<HTMLDivElement>(null);
 
   const selectedPair = FX_PAIRS.find((p) => p.pair === pair) ?? FX_PAIRS[0];
   const numAmount = parseFloat(amount || "0");
@@ -350,12 +351,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
               </p>
             </div>
           ) : (
-            <pre
-              ref={xmlRef}
-              className="text-[10.5px] font-mono text-zinc-300 whitespace-pre-wrap leading-relaxed selection:bg-amber-500/20"
-            >
-              <XmlHighlight xml={pacs.xml} />
-            </pre>
+            <div ref={xmlRef} className="overflow-x-auto">
+              <XmlViewer xml={pacs.xml} />
+            </div>
           )}
         </div>
 
@@ -460,17 +458,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
-}
-
-function XmlHighlight({ xml }: { xml: string }) {
-  const highlighted = xml
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/(&lt;\/?[\w.]+)/g, '<span style="color:#60a5fa">$1</span>')
-    .replace(/(&gt;)/g, '<span style="color:#60a5fa">$1</span>')
-    .replace(/"([^"]+)"/g, '"<span style="color:#fbbf24">$1</span>"')
-    .replace(/(\d{4}-\d{2}-\d{2}T[\d:.Z]+)/g, '<span style="color:#34d399">$1</span>');
-
-  return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
 }
