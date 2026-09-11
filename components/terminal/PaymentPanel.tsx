@@ -40,9 +40,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [amount, setAmount] = useState("2500000");
   const [pair, setPair] = useState("USD/KES");
   const [channel, setChannel] = useState<FDC3Channel>("global");
-  const [debtorName, setDebtorName] = useState("Citigroup Corporate Treasury");
+  const [debtorName, setDebtorName] = useState("Corporate Treasury Desk (Simulated)");
   const [debtorAcct, setDebtorAcct] = useState("4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG");
-  const [creditorName, setCreditorName] = useState("Standard Chartered Nairobi Desk");
+  const [creditorName, setCreditorName] = useState("Institutional Liquidity Desk (Simulated)");
   const [creditorAcct, setCreditorAcct] = useState("BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG");
   const [pacsXml, setPacsXml] = useState<string | null>(null);
   const [currentUetr, setCurrentUetr] = useState<string>("");
