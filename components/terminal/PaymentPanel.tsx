@@ -11,15 +11,19 @@ import { InstitutionalSelect } from "@/components/ui/Select";
 import { ConfirmationDialog } from "@/components/ui/Dialog";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { XmlViewer } from "./XmlViewer";
+import { EnclaveTelemetry } from "./EnclaveTelemetry";
+import type { ADR555PreflightReport } from "@/lib/enclave/adr555-guardian";
 import {
   Copy,
   Check,
   ExternalLink,
-  Zap,
-  Info,
   ShieldCheck,
   CheckCircle2,
-  ChevronRight,
+  Cpu,
+  Layers,
+  FileCheck2,
+  Info,
+  Zap,
 } from "lucide-react";
 import gsap from "gsap";
 import type { BlotterRow } from "./OrderBlotter";
@@ -35,6 +39,8 @@ const AMOUNT_PRESETS = [
   { label: "$10M", val: "10000000" },
   { label: "$25M", val: "25000000" },
 ];
+
+export type SettlementRail = "trilateral" | "solana" | "xrpl" | "synaptic";
 
 interface FDC3DeskConfig {
   id: FDC3Channel;
@@ -104,11 +110,14 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [amount, setAmount] = useState("2500000");
   const [pair, setPair] = useState("USD/KES");
   const [channel, setChannel] = useState<FDC3Channel>("global");
+  const [rail, setRail] = useState<SettlementRail>("trilateral");
   const [debtorName, setDebtorName] = useState("Corporate Treasury Desk");
   const [debtorAcct, setDebtorAcct] = useState("4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG");
   const [creditorName, setCreditorName] = useState("Institutional Liquidity Desk");
   const [creditorAcct, setCreditorAcct] = useState("BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG");
   const [pacsXml, setPacsXml] = useState<string | null>(null);
+  const [pacs002Xml, setPacs002Xml] = useState<string | null>(null);
+  const [adr555Report, setAdr555Report] = useState<ADR555PreflightReport | null>(null);
   const [currentUetr, setCurrentUetr] = useState<string>("");
   const [currentMsgId, setCurrentMsgId] = useState<string>("");
   const [status, setStatus] = useState<"idle" | "review" | "building" | "settling" | "done" | "error">("idle");
@@ -116,6 +125,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [copiedXml, setCopiedXml] = useState(false);
   const [lastTxSig, setLastTxSig] = useState<string | null>(null);
   const [lastExplorerUrl, setLastExplorerUrl] = useState<string | null>(null);
+  const [lastXrplExplorerUrl, setLastXrplExplorerUrl] = useState<string | null>(null);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<"pacs008" | "pacs002" | "enclave">("pacs008");
   const [showValidationModal, setShowValidationModal] = useState(false);
   const xmlRef = useRef<HTMLDivElement>(null);
 
@@ -125,9 +136,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const tsaFee = numAmount * 0.005;
   const netAmount = numAmount - tsaFee;
 
-  // Validation
   const cbprCheck = pacsXml ? validateCBPRPlus(pacsXml) : null;
-
   const activeDesk = FDC3_DESK_CONFIGS[channel] || FDC3_DESK_CONFIGS.global;
 
   const switchChannel = (newCh: FDC3Channel) => {
@@ -151,7 +160,6 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const handleExecuteSettlement = async () => {
     setStatus("building");
 
-    // 1. Generate SWIFT UETR & MsgId
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     const dateStr = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
@@ -170,7 +178,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     setCurrentUetr(uetr);
     setCurrentMsgId(msgId);
 
-    // 2. Build ISO 20022 pacs.008 Customer Credit Transfer
+    // 1. Build ISO 20022 pacs.008
     const initialXml = buildInstitutionalPacs008(
       {
         type: "fdc3.paymentContext",
@@ -186,7 +194,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     );
     setPacsXml(initialXml);
 
-    // 3. Emit FDC3 3.0 StartPayment Intent to desktop bridge
+    // 2. Emit FDC3 3.0 intent
     const fdc3Context: PaymentContext = {
       type: "fdc3.paymentContext",
       id: { UETR: uetr },
@@ -195,14 +203,13 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       debtor: { name: debtorName, account: debtorAcct },
       creditor: { name: creditorName, account: creditorAcct },
       networkRouting: {
-        rail: "Solana Token-2022",
+        rail: rail === "xrpl" ? "XRPL Interledger" : "Solana Token-2022",
         signatureType: "Ed25519",
         laneId: `corridor-${pair.toLowerCase().replace("/", "-")}`,
       },
     };
     fdc3Bridge.raiseIntent(fdc3Context);
 
-    // Flash GSAP effect on XML inspector
     if (xmlRef.current) {
       gsap.fromTo(
         xmlRef.current,
@@ -211,7 +218,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       );
     }
 
-    // 4. Dispatch on-chain Token-2022 memo settlement on Solana Devnet
+    // 3. Dispatch Settlement
     setStatus("settling");
     try {
       const resp = await fetch("/api/settle", {
@@ -223,6 +230,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
           msgId,
           pair,
           rate: selectedPair.rate,
+          rail,
           channel,
           debtorName,
           debtorAcct,
@@ -232,12 +240,25 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       });
       const data = await resp.json();
 
-      if (data.error && !data.txSignature) {
+      if (data.error && !data.txSignature && !data.xrplTxHash) {
         throw new Error(data.error);
       }
 
-      setLastTxSig(data.txSignature || null);
+      setAdr555Report(data.adr555Report || null);
+      if (data.pacs002Xml) {
+        setPacs002Xml(data.pacs002Xml);
+        setActiveInspectorTab("pacs002");
+      } else if (data.adr555Report) {
+        setActiveInspectorTab("enclave");
+      }
+
+      setLastTxSig(data.txSignature || data.xrplTxHash || null);
       setLastExplorerUrl(data.explorerUrl || null);
+      if (data.xrplSidecar?.explorerUrl) {
+        setLastXrplExplorerUrl(data.xrplSidecar.explorerUrl);
+      } else if (rail === "xrpl") {
+        setLastXrplExplorerUrl(data.explorerUrl || null);
+      }
 
       const blotterRow: BlotterRow = {
         id: uetr,
@@ -248,17 +269,25 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         amount: `${numAmount.toLocaleString()} ${pair.split("/")[0]}`,
         debtorName,
         creditorName,
-        txSignature: data.txSignature ?? "",
+        txSignature: data.txSignature || data.xrplTxHash || "",
         explorerUrl: data.explorerUrl ?? "",
         status: data.error ? "FAILED" : "CONFIRMED",
         channel,
+        rail:
+          rail === "trilateral"
+            ? "Trilateral Powerhouse"
+            : rail === "xrpl"
+            ? "XRPL Altnet"
+            : "Solana Token-2022",
+        pacs002: data.pacs002,
+        wotsDigest: data.adr555Report?.attestation?.wotsPlus?.wotsLeafRoot,
+        lane: data.adr555Report?.concurrencyAllocation?.laneId,
       };
 
       onSettlement(blotterRow);
       setStatus("done");
 
-      // Re-embed Solana Tx Signature into canonical pacs.008 XML
-      if (data.txSignature) {
+      if (data.txSignature && !data.xrplTxHash) {
         const updatedXml = buildInstitutionalPacs008(
           {
             type: "fdc3.paymentContext",
@@ -282,90 +311,120 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     }
   };
 
-  const copyXml = () => {
-    if (!pacsXml) return;
-    navigator.clipboard.writeText(pacsXml);
-    setCopiedXml(true);
-    setTimeout(() => setCopiedXml(false), 1500);
+  const copyCurrentContent = () => {
+    let content = pacsXml || "";
+    if (activeInspectorTab === "pacs002" && pacs002Xml) {
+      content = pacs002Xml;
+    }
+    if (content) {
+      navigator.clipboard.writeText(content);
+      setCopiedXml(true);
+      setTimeout(() => setCopiedXml(false), 2000);
+    }
   };
 
   return (
-    <div className="flex h-full gap-0 divide-x divide-[#1a1a1a]">
-      {/* LEFT: Input Form */}
-      <div className="w-80 shrink-0 flex flex-col bg-[#0a0a0a]">
-        {/* Panel Header */}
-        <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0c0c0c] gap-2">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="text-[10px] font-mono text-zinc-200 font-semibold tracking-widest uppercase truncate">
-              FDC3 StartPayment
+    <div className="flex h-full divide-x divide-[#1a1a1a]">
+      {/* LEFT: Institutional FX Ticket */}
+      <div className="w-[380px] shrink-0 flex flex-col bg-[#0a0a0a] overflow-y-auto">
+        <div className="p-3 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0d0d0d]">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono text-zinc-300 font-bold uppercase tracking-wider">
+              {activeDesk.name}
             </span>
           </div>
+          <span className={`text-[8.5px] font-mono px-1.5 py-0.5 border font-semibold ${activeDesk.badgeClass}`}>
+            {activeDesk.label} CH
+          </span>
+        </div>
 
-          {/* Interactive FDC3 Channel Switcher */}
-          <div className="flex items-center gap-0.5 bg-[#141414] border border-[#222] p-0.5 shrink-0">
-            <span className="text-[8px] font-mono text-zinc-500 px-1 uppercase tracking-wider">CH:</span>
-            {(["global", "red", "green", "blue"] as FDC3Channel[]).map((ch) => {
-              const cfg = FDC3_DESK_CONFIGS[ch];
-              const isActive = channel === ch;
-              return (
-                <button
-                  key={ch}
-                  type="button"
-                  onClick={() => switchChannel(ch)}
-                  title={`Switch to ${cfg.name} (${cfg.role})`}
-                  className={`px-1.5 py-0.5 text-[8.5px] font-mono font-bold uppercase transition-all ${
-                    isActive ? cfg.buttonClass : "text-zinc-500 hover:text-zinc-300 bg-transparent"
-                  }`}
-                >
-                  {cfg.label}
-                </button>
-              );
-            })}
+        {/* FDC3 Channel Switcher */}
+        <div className="px-3 pt-2.5 pb-1 border-b border-[#141414] bg-[#0b0b0b]">
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-[8.5px] font-mono text-zinc-500 uppercase tracking-widest">
+              FDC3 3.0 Context Channel:
+            </span>
+            <span className="text-[8.5px] font-mono text-amber-400 font-semibold">{activeDesk.role}</span>
+          </div>
+          <div className="grid grid-cols-4 gap-1">
+            {(["global", "red", "green", "blue"] as const).map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => switchChannel(ch)}
+                className={`py-1 text-[9px] font-mono uppercase font-bold border transition-colors ${
+                  channel === ch
+                    ? ch === "global"
+                      ? "bg-amber-400 text-black border-amber-400"
+                      : ch === "red"
+                      ? "bg-rose-500 text-white border-rose-500"
+                      : ch === "green"
+                      ? "bg-emerald-500 text-black border-emerald-500"
+                      : "bg-sky-500 text-black border-sky-500"
+                    : "bg-[#141414] border-[#222] text-zinc-400 hover:text-white"
+                }`}
+              >
+                {ch}
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Active Desk Telemetry Readout */}
-        <div className={`px-3 py-1 border-b flex items-center justify-between text-[9px] font-mono ${activeDesk.badgeClass}`}>
-          <div className="flex items-center gap-1.5 truncate">
-            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse shrink-0" />
-            <span className="font-bold uppercase truncate">{activeDesk.name}</span>
+        {/* Settlement Rail Switcher: Trilateral Redundancy */}
+        <div className="px-3 pt-2 pb-2 border-b border-[#141414] bg-[#0c0c0c]">
+          <div className="flex justify-between items-center mb-1">
+            <span className="text-[8.5px] font-mono text-zinc-400 uppercase tracking-widest flex items-center gap-1 font-bold">
+              <Zap className="w-3 h-3 text-amber-400" />
+              <span>Settlement Rail:</span>
+            </span>
+            <span className="text-[8px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-1">
+              {rail === "trilateral" ? "3-WAY POWERHOUSE" : "SINGLE RAIL"}
+            </span>
           </div>
-          <span className="text-[8px] opacity-80 uppercase shrink-0">{activeDesk.role}</span>
+          <div className="grid grid-cols-3 gap-1 text-[8px] font-mono">
+            <button
+              type="button"
+              onClick={() => setRail("trilateral")}
+              className={`py-1 px-1 border uppercase font-bold text-center transition-colors ${
+                rail === "trilateral"
+                  ? "bg-amber-500/20 border-amber-500 text-amber-300"
+                  : "bg-[#111] border-[#222] text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              Trilateral
+            </button>
+            <button
+              type="button"
+              onClick={() => setRail("solana")}
+              className={`py-1 px-1 border uppercase font-bold text-center transition-colors ${
+                rail === "solana"
+                  ? "bg-sky-500/20 border-sky-500 text-sky-300"
+                  : "bg-[#111] border-[#222] text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              Solana T-22
+            </button>
+            <button
+              type="button"
+              onClick={() => setRail("xrpl")}
+              className={`py-1 px-1 border uppercase font-bold text-center transition-colors ${
+                rail === "xrpl"
+                  ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
+                  : "bg-[#111] border-[#222] text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              XRPL Altnet
+            </button>
+          </div>
         </div>
 
-        <div className="flex-1 p-3 flex flex-col gap-2 overflow-y-auto">
-          {/* Corridor Selection Buttons */}
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[9px] font-mono text-zinc-500 tracking-wider uppercase">
-                Corridor Preset
-              </label>
-              <span className="text-[9px] font-mono text-zinc-600">HOTKEYS 1-4</span>
-            </div>
-            <div className="grid grid-cols-4 gap-1">
-              {["USD/KES", "USD/NGN", "USD/TZS", "USD/ZAR"].map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPair(p)}
-                  className={`py-1 text-[10px] font-mono border rounded-none uppercase transition-colors ${
-                    pair === p
-                      ? "bg-amber-500/10 border-amber-500/50 text-amber-300 font-bold"
-                      : "bg-[#111] border-[#222] text-zinc-400 hover:text-zinc-200"
-                  }`}
-                >
-                  {p.split("/")[1]}
-                </button>
-              ))}
-            </div>
-          </div>
-
+        {/* Ticket Form */}
+        <div className="p-3 space-y-2.5 flex-1 text-[11px]">
           <Field label="FX Pair">
             <InstitutionalSelect options={FX_PAIRS} value={pair} onChange={setPair} />
           </Field>
 
-          {/* Amount and Multi-Million Dollar Presets */}
+          {/* Amount Presets */}
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="text-[9px] font-mono text-zinc-500 tracking-wider uppercase">
@@ -440,41 +499,33 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             <input
               value={debtorName}
               onChange={(e) => setDebtorName(e.target.value)}
-              className="w-full bg-[#111111] border border-[#222222] text-zinc-200 text-[10.5px] font-mono px-2.5 py-1.5 rounded-none focus:outline-none focus:border-zinc-500"
+              className="w-full bg-[#111111] border border-[#222222] text-zinc-200 text-[10px] font-mono px-2 py-1 rounded-none focus:outline-none focus:border-zinc-500"
             />
           </Field>
-          <Field label="Debtor Token-2022 ATA (Treasury Desk)">
-            <input
-              value={debtorAcct}
-              onChange={(e) => setDebtorAcct(e.target.value)}
-              className="w-full bg-[#111111] border border-[#222222] text-zinc-400 text-[10px] font-mono px-2.5 py-1.5 rounded-none focus:outline-none focus:border-zinc-500"
-            />
-          </Field>
-          <Field label="Creditor Entity (Reserve Bank / Institutional Desk)">
+          <Field label="Creditor Entity (Institutional Beneficiary)">
             <input
               value={creditorName}
               onChange={(e) => setCreditorName(e.target.value)}
-              className="w-full bg-[#111111] border border-[#222222] text-zinc-200 text-[10.5px] font-mono px-2.5 py-1.5 rounded-none focus:outline-none focus:border-zinc-500"
-            />
-          </Field>
-          <Field label="Creditor Token-2022 Account (RequiredMemoTransfers Guard)">
-            <input
-              value={creditorAcct}
-              onChange={(e) => setCreditorAcct(e.target.value)}
-              className="w-full bg-[#111111] border border-[#222222] text-zinc-400 text-[10px] font-mono px-2.5 py-1.5 rounded-none focus:outline-none focus:border-zinc-500"
+              className="w-full bg-[#111111] border border-[#222222] text-zinc-200 text-[10px] font-mono px-2 py-1 rounded-none focus:outline-none focus:border-zinc-500"
             />
           </Field>
 
           <button
             onClick={handleOpenReview}
             disabled={status === "building" || status === "settling"}
-            className="w-full mt-1 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-950 disabled:text-zinc-600 disabled:cursor-not-allowed text-black font-mono text-[11px] font-bold tracking-widest uppercase transition-all rounded-none shadow-lg shadow-amber-500/10 active:translate-y-0.5"
+            className="w-full mt-1 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:bg-amber-950 disabled:text-zinc-600 disabled:cursor-not-allowed text-black font-mono text-[10.5px] font-bold tracking-widest uppercase transition-all rounded-none shadow-lg shadow-amber-500/10 active:translate-y-0.5"
           >
-            {status === "building" && "BUILDING pacs.008…"}
-            {status === "settling" && "SETTLING ON SOLANA TOKEN-2022…"}
+            {status === "building" && "ADR-555 PRE-FLIGHT GUARDIAN…"}
+            {status === "settling" && "EXECUTING TRILATERAL SETTLEMENT…"}
             {status === "done" && "✓ SETTLED — DISPATCH NEW TRADE"}
             {status === "error" && "RETRY INTENT"}
-            {status === "idle" && "RAISE FDC3 STARTPAYMENT"}
+            {status === "idle" && (
+              rail === "trilateral"
+                ? "AUTHORIZE & SETTLE (TRILATERAL)"
+                : rail === "xrpl"
+                ? "AUTHORIZE & SETTLE ON XRPL"
+                : "AUTHORIZE & SETTLE ON SOLANA"
+            )}
           </button>
 
           {errorMsg && (
@@ -485,105 +536,181 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         </div>
       </div>
 
-      {/* MIDDLE: ISO 20022 pacs.008 XML Inspector */}
+      {/* RIGHT: Multi-Tab Message & Telemetry Inspector */}
       <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-        <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0d0d0d]">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono text-zinc-400 font-semibold tracking-widest uppercase">
-              ISO 20022 pacs.008.001.08
-            </span>
-            <span className="text-[9px] font-mono text-zinc-600">|</span>
-            <span className="text-[9px] font-mono text-zinc-500">
-              CBPR+ Financial Messaging Standard (v3.0)
-            </span>
+        <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0d0d0d] flex-wrap gap-2">
+          {/* Tab buttons */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setActiveInspectorTab("pacs008")}
+              className={`px-2 py-1 text-[9.5px] font-mono font-bold uppercase border transition-colors flex items-center gap-1.5 ${
+                activeInspectorTab === "pacs008"
+                  ? "bg-amber-500/20 border-amber-500 text-amber-300"
+                  : "bg-[#141414] border-[#222] text-zinc-400 hover:text-white"
+              }`}
+            >
+              <FileCheck2 className="w-3 h-3 text-amber-400" />
+              <span>pacs.008 Payment</span>
+            </button>
+
+            <button
+              onClick={() => setActiveInspectorTab("pacs002")}
+              className={`px-2 py-1 text-[9.5px] font-mono font-bold uppercase border transition-colors flex items-center gap-1.5 ${
+                activeInspectorTab === "pacs002"
+                  ? "bg-emerald-500/20 border-emerald-500 text-emerald-300"
+                  : "bg-[#141414] border-[#222] text-zinc-400 hover:text-white"
+              }`}
+            >
+              <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+              <span>pacs.002 Receipt (Acsc)</span>
+              {pacs002Xml && <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />}
+            </button>
+
+            <button
+              onClick={() => setActiveInspectorTab("enclave")}
+              className={`px-2 py-1 text-[9.5px] font-mono font-bold uppercase border transition-colors flex items-center gap-1.5 ${
+                activeInspectorTab === "enclave"
+                  ? "bg-sky-500/20 border-sky-500 text-sky-300"
+                  : "bg-[#141414] border-[#222] text-zinc-400 hover:text-white"
+              }`}
+            >
+              <ShieldCheck className="w-3 h-3 text-sky-400" />
+              <span>ADR-555 Enclave & WOTS+</span>
+              {adr555Report && <span className="text-[8px] text-sky-400 bg-sky-950 px-1">sub-8ms</span>}
+            </button>
           </div>
 
-          <div className="flex items-center gap-3">
-            {pacsXml && (
-              <>
-                <button
-                  onClick={copyXml}
-                  className="text-[9px] font-mono text-zinc-400 hover:text-amber-400 flex items-center gap-1 border border-[#222] px-2 py-0.5 rounded-none bg-[#111] transition-colors"
-                >
-                  {copiedXml ? (
-                    <>
-                      <Check className="w-3 h-3 text-emerald-400" />
-                      <span>COPIED</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3 h-3" />
-                      <span>COPY XML</span>
-                    </>
-                  )}
-                </button>
-
-                {cbprCheck && (
-                  <button
-                    onClick={() => setShowValidationModal(!showValidationModal)}
-                    className="text-[9px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800 px-2 py-0.5 rounded-none font-semibold flex items-center gap-1 hover:border-emerald-600"
-                  >
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>{cbprCheck.checkedElements}/14 CBPR+ COMPLIANT</span>
-                  </button>
+          {/* Action buttons */}
+          <div className="flex items-center gap-2">
+            {(pacsXml || pacs002Xml) && activeInspectorTab !== "enclave" && (
+              <button
+                onClick={copyCurrentContent}
+                className="text-[9px] font-mono text-zinc-400 hover:text-amber-400 flex items-center gap-1 border border-[#222] px-2 py-0.5 rounded-none bg-[#111] transition-colors"
+              >
+                {copiedXml ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>COPIED</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>COPY XML</span>
+                  </>
                 )}
-              </>
+              </button>
+            )}
+
+            {cbprCheck && activeInspectorTab === "pacs008" && (
+              <button
+                onClick={() => setShowValidationModal(!showValidationModal)}
+                className="text-[9px] font-mono text-emerald-400 bg-emerald-950/40 border border-emerald-800 px-2 py-0.5 rounded-none font-semibold flex items-center gap-1"
+              >
+                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                <span>{cbprCheck.checkedElements}/14 CBPR+ COMPLIANT</span>
+              </button>
             )}
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-3 bg-[#080808]">
-          {!pacsXml ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-600 font-mono">
-              <div className="w-10 h-10 border border-dashed border-zinc-700 flex items-center justify-center mb-2">
-                <span className="text-zinc-500 text-[11px] font-bold">XML</span>
-              </div>
-              <p className="text-[11px] text-zinc-400 font-semibold mb-1">
-                Awaiting FDC3 StartPayment Intent
-              </p>
-              <p className="text-[10px] text-zinc-600 max-w-md">
-                Raise an intent from the left panel to execute the IBM_BOB FINOS connector pipeline:
-                constructs the ISO 20022 pacs.008 XML envelope, enforces 14-point CBPR+ compliance,
-                and executes atomic settlement via Solana Token-2022 MemoTransfer.
-              </p>
+        {/* Tab Content Display */}
+        <div className="flex-1 overflow-auto bg-[#080808]">
+          {activeInspectorTab === "pacs008" && (
+            <div className="p-3">
+              {!pacsXml ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-600 font-mono">
+                  <div className="w-10 h-10 border border-dashed border-zinc-700 flex items-center justify-center mb-2">
+                    <span className="text-zinc-500 text-[11px] font-bold">XML</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 font-semibold mb-1">
+                    Awaiting FDC3 StartPayment Intent
+                  </p>
+                  <p className="text-[10px] text-zinc-600 max-w-md">
+                    Raise an intent to construct ISO 20022 pacs.008 XML, execute ADR-555 Enclave preflight,
+                    and trigger atomic cross-rail settlement.
+                  </p>
+                </div>
+              ) : (
+                <div ref={xmlRef} className="overflow-x-auto">
+                  <XmlViewer xml={pacsXml} />
+                </div>
+              )}
             </div>
-          ) : (
-            <div ref={xmlRef} className="overflow-x-auto">
-              <XmlViewer xml={pacsXml} />
+          )}
+
+          {activeInspectorTab === "pacs002" && (
+            <div className="p-3">
+              {!pacs002Xml ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-600 font-mono">
+                  <div className="w-10 h-10 border border-dashed border-emerald-700/50 flex items-center justify-center mb-2">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                  </div>
+                  <p className="text-[11px] text-zinc-400 font-semibold mb-1">
+                    Awaiting Settlement Confirmation Receipt
+                  </p>
+                  <p className="text-[10px] text-zinc-600 max-w-md">
+                    When settlement executes via XRPL or Trilateral Redundancy, the native relayer produces the
+                    pacs.002.001.10 XML status report verifying consensus clearance (Acsc) from SynapticChain checkpoints.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <XmlViewer xml={pacs002Xml} />
+                </div>
+              )}
             </div>
+          )}
+
+          {activeInspectorTab === "enclave" && (
+            <EnclaveTelemetry report={adr555Report} rail={rail} />
           )}
         </div>
 
-        {/* Footer Metrics Bar */}
-        {pacsXml && (
-          <div className="border-t border-[#1a1a1a] px-3 py-2 bg-[#0c0c0c] flex items-center justify-between text-[10px] font-mono">
-            <div className="flex items-center gap-4">
-              <Tooltip content={currentUetr} copyable copyText={currentUetr}>
-                <span className="text-zinc-500 cursor-help">
-                  UETR: <span className="text-zinc-300 underline underline-offset-2">{currentUetr.slice(0, 16)}…</span>
-                </span>
-              </Tooltip>
+        {/* Footer Explorer Links & Provenance Bar */}
+        {(lastExplorerUrl || lastXrplExplorerUrl || currentUetr) && (
+          <div className="border-t border-[#1a1a1a] px-3 py-2 bg-[#0c0c0c] flex items-center justify-between text-[10px] font-mono flex-wrap gap-2">
+            <div className="flex items-center gap-3">
+              {currentUetr && (
+                <Tooltip content={currentUetr} copyable copyText={currentUetr}>
+                  <span className="text-zinc-500 cursor-help">
+                    UETR: <span className="text-zinc-300 underline underline-offset-2">{currentUetr.slice(0, 16)}…</span>
+                  </span>
+                </Tooltip>
+              )}
               <span className="text-zinc-600">|</span>
               <span className="text-zinc-500">
                 TSA LEVY: <span className="text-rose-400">−{tsaFee.toLocaleString()}</span>
               </span>
               <span className="text-zinc-600">|</span>
               <span className="text-zinc-500">
-                NET PAYOUT: <span className="text-emerald-400 font-bold">{netAmount.toLocaleString()}</span>
+                NET: <span className="text-emerald-400 font-bold">{netAmount.toLocaleString()}</span>
               </span>
             </div>
 
-            {lastExplorerUrl && (
-              <a
-                href={lastExplorerUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-amber-400 hover:text-amber-300 flex items-center gap-1 underline underline-offset-2"
-              >
-                <span>SOLANA DEVNET TRANSACTION</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
+            <div className="flex items-center gap-3">
+              {lastExplorerUrl && (
+                <a
+                  href={lastExplorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-amber-400 hover:text-amber-300 flex items-center gap-1 underline underline-offset-2"
+                >
+                  <span>SOLANA TX</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+              {lastXrplExplorerUrl && (
+                <a
+                  href={lastXrplExplorerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sky-400 hover:text-sky-300 flex items-center gap-1 underline underline-offset-2"
+                >
+                  <span>XRPL TESTNET TX</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -595,7 +722,13 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         onConfirm={handleExecuteSettlement}
         title="CONFIRM FDC3 STARTPAYMENT DISPATCH"
         subtitle="INSTITUTIONAL CORPORATE TREASURY DESK REVIEW"
-        confirmLabel="AUTHORIZE & SETTLE ON SOLANA TOKEN-2022"
+        confirmLabel={
+          rail === "trilateral"
+            ? "AUTHORIZE & SETTLE ON TRILATERAL RAILS"
+            : rail === "xrpl"
+            ? "AUTHORIZE & SETTLE ON XRPL ALTNET"
+            : "AUTHORIZE & SETTLE ON SOLANA TOKEN-2022"
+        }
       >
         <div className="border border-[#1e1e1e] bg-[#0c0c0c] p-3 space-y-2 text-[10.5px]">
           <div className="flex justify-between border-b border-[#181818] pb-1.5">
@@ -603,20 +736,18 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             <span className="text-amber-400 font-bold">StartPayment (fdc3.paymentContext)</span>
           </div>
           <div className="flex justify-between border-b border-[#181818] pb-1.5">
-            <span className="text-zinc-500 uppercase">FDC3 Channel:</span>
-            <span className="text-white uppercase font-semibold">{channel} channel</span>
-          </div>
-          <div className="flex justify-between border-b border-[#181818] pb-1.5">
-            <span className="text-zinc-500 uppercase">Messaging Standard:</span>
-            <span className="text-zinc-300">ISO 20022 pacs.008.001.08 (CBPR+ v3.0)</span>
-          </div>
-          <div className="flex justify-between border-b border-[#181818] pb-1.5">
             <span className="text-zinc-500 uppercase">Settlement Rail:</span>
-            <span className="text-sky-400 font-bold">Solana Token-2022 (MemoTransfer)</span>
+            <span className="text-sky-400 font-bold uppercase">
+              {rail === "trilateral"
+                ? "Trilateral Powerhouse (Solana + XRPL + L1)"
+                : rail === "xrpl"
+                ? "XRPL Altnet (SHAMap DENSE-16)"
+                : "Solana Token-2022 (RequiredMemo)"}
+            </span>
           </div>
           <div className="flex justify-between border-b border-[#181818] pb-1.5">
-            <span className="text-zinc-500 uppercase">Currency Pair:</span>
-            <span className="text-white font-bold">{pair} @ {selectedPair.rate}</span>
+            <span className="text-zinc-500 uppercase">ADR-555 Enclave:</span>
+            <span className="text-emerald-400 font-bold">Active (WOTS+ & Concurrency Gate)</span>
           </div>
           <div className="flex justify-between border-b border-[#181818] pb-1.5">
             <span className="text-zinc-500 uppercase">Gross Trade Amount:</span>

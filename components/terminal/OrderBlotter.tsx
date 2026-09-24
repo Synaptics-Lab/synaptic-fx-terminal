@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ExternalLink, Search, Activity, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
+import { ExternalLink, Search, Activity, CheckCircle2, Clock, AlertTriangle, Key } from "lucide-react";
 import gsap from "gsap";
 import type { FDC3Channel } from "@/lib/connector/solana-finos-bridge";
 
@@ -19,6 +19,10 @@ export interface BlotterRow {
   explorerUrl: string;
   status: "PENDING" | "CONFIRMED" | "FAILED";
   channel?: FDC3Channel;
+  rail?: string;
+  pacs002?: any;
+  wotsDigest?: string;
+  lane?: number;
 }
 
 interface OrderBlotterProps {
@@ -51,6 +55,7 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
       r.pair.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.msgId.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.uetr.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.rail && r.rail.toLowerCase().includes(searchTerm.toLowerCase())) ||
       r.debtorName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       r.creditorName.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesStatus && matchesChannel && matchesSearch;
@@ -61,12 +66,12 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a]">
       {/* Blotter Top Bar */}
-      <div className="px-3 py-2 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0d0d0d] gap-2 flex-wrap">
+      <div className="px-3 py-1.5 border-b border-[#1a1a1a] flex items-center justify-between bg-[#0d0d0d] gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <Activity className="w-3.5 h-3.5 text-amber-400" />
             <span className="text-[10px] font-mono text-zinc-300 font-semibold tracking-widest uppercase">
-              Settlement Blotter
+              Trilateral Settlement Blotter
             </span>
           </div>
           <span className="text-[9px] font-mono text-zinc-600">|</span>
@@ -144,25 +149,24 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
 
       {/* Table Area */}
       <div className="flex-1 overflow-auto bg-[#080808]">
-        <table className="w-full text-[11px] font-mono border-collapse">
+        <table className="w-full text-[10.5px] font-mono border-collapse">
           <thead className="sticky top-0 bg-[#0e0e0e] border-b border-[#1a1a1a] z-10 shadow-sm">
-            <tr className="text-zinc-500 text-left text-[9.5px] uppercase tracking-wider">
+            <tr className="text-zinc-500 text-left text-[9px] uppercase tracking-wider">
               <th className="px-2.5 py-1.5 font-normal">TIME</th>
-              <th className="px-2 py-1.5 font-normal">FDC3</th>
+              <th className="px-2 py-1.5 font-normal">RAIL</th>
               <th className="px-2.5 py-1.5 font-normal">MSG ID</th>
               <th className="px-2.5 py-1.5 font-normal">UETR</th>
               <th className="px-2.5 py-1.5 font-normal">PAIR</th>
               <th className="px-2.5 py-1.5 font-normal text-right">GROSS AMOUNT</th>
-              <th className="px-2.5 py-1.5 font-normal">DEBTOR</th>
-              <th className="px-2.5 py-1.5 font-normal">CREDITOR</th>
-              <th className="px-2.5 py-1.5 font-normal">SOLANA TX</th>
+              <th className="px-2.5 py-1.5 font-normal">LANE / WOTS+</th>
+              <th className="px-2.5 py-1.5 font-normal">SETTLEMENT TX</th>
               <th className="px-2.5 py-1.5 font-normal text-center">STATUS</th>
             </tr>
           </thead>
           <tbody ref={tbodyRef}>
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-10 text-center text-zinc-600 font-mono text-[11px]">
+                <td colSpan={9} className="px-3 py-10 text-center text-zinc-600 font-mono text-[11px]">
                   {rows.length === 0
                     ? "// No settlement transactions recorded yet. Raise an FDC3 StartPayment intent."
                     : "// No transactions match the selected filter."}
@@ -177,17 +181,15 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
                 <td className="px-2.5 py-1.5 text-zinc-500 whitespace-nowrap">{row.timestamp}</td>
                 <td className="px-2 py-1.5 whitespace-nowrap">
                   <span
-                    className={`px-1.5 py-0.5 text-[8.5px] font-mono font-bold uppercase border ${
-                      row.channel === "red"
-                        ? "bg-rose-950/40 border-rose-800 text-rose-300"
-                        : row.channel === "green"
-                        ? "bg-emerald-950/40 border-emerald-800 text-emerald-300"
-                        : row.channel === "blue"
-                        ? "bg-sky-950/40 border-sky-800 text-sky-300"
-                        : "bg-amber-950/40 border-amber-800 text-amber-300"
+                    className={`px-1.5 py-0.5 text-[8px] font-mono font-bold uppercase border ${
+                      row.rail?.includes("Trilateral")
+                        ? "bg-amber-950/40 border-amber-500/60 text-amber-300"
+                        : row.rail?.includes("XRPL")
+                        ? "bg-emerald-950/40 border-emerald-500/60 text-emerald-300"
+                        : "bg-sky-950/40 border-sky-500/60 text-sky-300"
                     }`}
                   >
-                    {row.channel || "global"}
+                    {row.rail?.includes("Trilateral") ? "TRILATERAL" : row.rail?.includes("XRPL") ? "XRPL" : "SOLANA"}
                   </span>
                 </td>
                 <td className="px-2.5 py-1.5 text-zinc-300 whitespace-nowrap">
@@ -208,11 +210,20 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
                 <td className="px-2.5 py-1.5 text-white font-semibold tabular-nums text-right whitespace-nowrap">
                   {row.amount}
                 </td>
-                <td className="px-2.5 py-1.5 text-zinc-400 truncate max-w-[120px] whitespace-nowrap">
-                  {row.debtorName}
-                </td>
-                <td className="px-2.5 py-1.5 text-zinc-400 truncate max-w-[120px] whitespace-nowrap">
-                  {row.creditorName}
+                <td className="px-2.5 py-1.5 whitespace-nowrap">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-zinc-400 text-[9px] bg-[#141414] border border-[#222] px-1 py-0.2">
+                      L#{row.lane !== undefined ? row.lane : 14}
+                    </span>
+                    {row.wotsDigest && (
+                      <Tooltip content={`WOTS+ Leaf Root: ${row.wotsDigest}`} copyable copyText={row.wotsDigest}>
+                        <span className="cursor-help inline-flex items-center gap-0.5 text-sky-400 text-[8.5px]">
+                          <Key className="w-2.5 h-2.5" />
+                          <span>PQ</span>
+                        </span>
+                      </Tooltip>
+                    )}
+                  </div>
                 </td>
                 <td className="px-2.5 py-1.5 whitespace-nowrap">
                   {row.txSignature ? (
@@ -220,10 +231,10 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
                       href={row.explorerUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-mono text-[10px] group/link"
+                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-mono text-[9.5px] group/link"
                     >
                       <span className="underline underline-offset-2 decoration-sky-800 group-hover/link:decoration-sky-400">
-                        {row.txSignature.slice(0, 4)}…{row.txSignature.slice(-4)}
+                        {row.txSignature.slice(0, 5)}…{row.txSignature.slice(-5)}
                       </span>
                       <ExternalLink className="w-2.5 h-2.5 text-sky-500 opacity-60 group-hover/link:opacity-100" />
                     </a>
@@ -233,19 +244,19 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
                 </td>
                 <td className="px-2.5 py-1.5 text-center whitespace-nowrap">
                   {row.status === "CONFIRMED" && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 text-[9px] font-bold">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-emerald-950/40 text-emerald-400 border border-emerald-900/60 text-[8.5px] font-bold">
                       <CheckCircle2 className="w-2.5 h-2.5" />
                       SETTLED
                     </span>
                   )}
                   {row.status === "PENDING" && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900/60 text-[9px]">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-950/40 text-amber-400 border border-amber-900/60 text-[8.5px]">
                       <Clock className="w-2.5 h-2.5 animate-spin" />
                       IN FLIGHT
                     </span>
                   )}
                   {row.status === "FAILED" && (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-950/40 text-rose-400 border border-rose-900/60 text-[9px] font-bold">
+                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-rose-950/40 text-rose-400 border border-rose-900/60 text-[8.5px] font-bold">
                       <AlertTriangle className="w-2.5 h-2.5" />
                       REJECTED
                     </span>
