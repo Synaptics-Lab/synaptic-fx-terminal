@@ -6,7 +6,7 @@ import { PaymentPanel } from "@/components/terminal/PaymentPanel";
 import { OrderBlotter, type BlotterRow } from "@/components/terminal/OrderBlotter";
 import { IntroModal } from "@/components/terminal/IntroModal";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { ShieldCheck, Terminal, Globe, Cpu, Layers, Info } from "lucide-react";
+import { ShieldCheck, Terminal, Globe, Cpu, Layers, Info, GitPullRequest, ExternalLink } from "lucide-react";
 
 export default function TerminalPage() {
   const [rows, setRows] = useState<BlotterRow[]>([]);
@@ -50,18 +50,26 @@ export default function TerminalPage() {
           <div className="hidden lg:flex items-center gap-2 text-zinc-500">
             <span>|</span>
             <Tooltip content="Implements experimental StartPayment intent defined in FINOS FDC3 PR #2204 & TraderX Spec 016">
-              <span className="flex items-center gap-1 text-amber-400 font-semibold bg-amber-950/30 border border-amber-900/40 px-1 py-0.2">
+              <span className="flex items-center gap-1 text-amber-400 font-semibold bg-amber-950/30 border border-amber-900/40 px-1.5 py-0.5">
                 <ShieldCheck className="w-3 h-3 text-amber-400" />
-                <span>FINOS FDC3 EXPERIMENTAL</span>
+                <span>FDC3 3.0 EXPERIMENTAL PR #2204</span>
               </span>
             </Tooltip>
             <span>·</span>
             <span className="text-zinc-400">ISO 20022 pacs.008/pacs.002</span>
             <span>·</span>
-            <span className="flex items-center gap-1 text-amber-300 font-semibold bg-amber-950/30 border border-amber-900/40 px-1 py-0.2">
-              <Layers className="w-3 h-3 text-amber-400" />
-              <span>TRILATERAL POWERHOUSE</span>
-            </span>
+            <Tooltip content="View Upstream Linux Foundation Pull Requests: TraderX PR #470 & FDC3 PR #2204">
+              <a
+                href="https://github.com/finos/traderX/pull/470"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 px-2 py-0.5 bg-[#161616] hover:bg-[#222] border border-amber-500/40 hover:border-amber-400 text-amber-300 hover:text-amber-200 transition-colors font-semibold text-[9.5px]"
+              >
+                <GitPullRequest className="w-3 h-3 text-amber-400" />
+                <span>FINOS PR #470</span>
+                <ExternalLink className="w-2.5 h-2.5 text-zinc-500" />
+              </a>
+            </Tooltip>
             <span>·</span>
             <span className="flex items-center gap-1 text-sky-400">
               <Cpu className="w-3 h-3" />
@@ -87,7 +95,7 @@ export default function TerminalPage() {
               <span>TRILATERAL RAILS ACTIVE</span>
             </span>
             <span className="text-[8.5px] text-sky-400 bg-sky-950/30 border border-sky-900/50 px-1.5 py-0.5">
-              XRPL ALTNET + SOLANA + L1
+              SOLANA + XRPL ALTNET + L1
             </span>
           </div>
 
