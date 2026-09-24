@@ -32,7 +32,7 @@ export default function TerminalPage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold tracking-widest uppercase">
             <Terminal className="w-3 h-3" />
-            <span>SYNAPTIC FX TERMINAL</span>
+            <span>SYNAPTIC FX TERMINAL · BANKERX</span>
           </div>
 
           <div className="hidden lg:flex items-center gap-2 text-zinc-500">

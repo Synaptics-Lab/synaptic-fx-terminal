@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { FX_PAIRS, type PaymentContext, fdc3Bridge } from "@/lib/fdc3/intent-bridge";
 import {
   buildInstitutionalPacs008,
@@ -147,6 +147,45 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     setPair(cfg.defaultPair);
     setAmount(cfg.defaultAmount);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleInboundPayment = (ctx: any) => {
+      if (!ctx) return;
+      if (ctx.amount) setAmount(String(ctx.amount));
+      if (ctx.pair) setPair(ctx.pair);
+      if (ctx.debtor?.name) setDebtorName(ctx.debtor.name);
+      if (ctx.debtor?.account) setDebtorAcct(ctx.debtor.account);
+      if (ctx.creditor?.name) setCreditorName(ctx.creditor.name);
+      if (ctx.creditor?.account) setCreditorAcct(ctx.creditor.account);
+      if (ctx.id?.UETR || ctx.networkRouting?.uetr) {
+        setCurrentUetr(ctx.id?.UETR || ctx.networkRouting?.uetr);
+      }
+      setStatus("review");
+      console.info("[BankerX] Received inbound FDC3 paymentContext from TraderX", ctx);
+    };
+
+    // Standard FDC3 Agent binding
+    const fdc3 = (window as any).fdc3;
+    if (fdc3 && typeof fdc3.addIntentListener === "function") {
+      try {
+        fdc3.addIntentListener("StartPayment", (ctx: any) => handleInboundPayment(ctx));
+        console.info("[BankerX] FDC3 StartPayment listener registered");
+      } catch (e) {
+        console.warn("[BankerX] fdc3.addIntentListener failed", e);
+      }
+    }
+
+    // Cross-window / PostMessage interop for TraderX / Sail / OpenFin integration
+    const messageHandler = (evt: MessageEvent) => {
+      if (evt.data?.type === "fdc3.paymentContext" || evt.data?.intent === "StartPayment") {
+        handleInboundPayment(evt.data.context || evt.data);
+      }
+    };
+    window.addEventListener("message", messageHandler);
+    return () => window.removeEventListener("message", messageHandler);
+  }, []);
 
   const handleOpenReview = () => {
     if (numAmount <= 0) {
