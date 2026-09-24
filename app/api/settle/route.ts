@@ -20,24 +20,23 @@ function getDemoKeypair(): Keypair {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
-      uetr,
-      amount,
-      msgId = `SYN-FINOS-${Date.now()}`,
-      pair = "USD/KES",
-      rate = 129.42,
-      rail = "solana", // "solana" | "xrpl" | "synaptic" | "trilateral"
-      debtorName = "Corporate Treasury Desk",
-      debtorAcct = "syn1qyz7g8v4r3t2u1x9w",
-      creditorName = "Reserve Bank Institutional Node",
-      creditorAcct = "syn1qqy7x2w5r6t1u3v8",
-    } = body;
+    const effectiveUetr = body.uetr || body.id?.UETR || (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `UETR-${Date.now()}`);
+    const effectiveAmount = body.amount;
+    const msgId = body.msgId || `SYN-FINOS-${Date.now()}`;
+    const pair = body.pair || "USD/KES";
+    const rate = body.rate || 129.42;
+    const rail = body.rail || "trilateral"; // Default to trilateral powerhouse
+    const debtorName = body.debtorName || body.debtor?.name || "TraderX Institutional Execution Desk";
+    const debtorAcct = body.debtorAcct || body.debtor?.account || "syn1qyz7g8v4r3t2u1x9w";
+    const creditorName = body.creditorName || body.creditor?.name || "BankerX Institutional Liquidity Desk";
+    const creditorAcct = body.creditorAcct || body.creditor?.account || "syn1qqy7x2w5r6t1u3v8";
+    const uetr = effectiveUetr;
 
-    if (!uetr || !amount) {
-      return NextResponse.json({ error: "Missing uetr or amount" }, { status: 400 });
+    if (!effectiveAmount) {
+      return NextResponse.json({ error: "Missing amount" }, { status: 400 });
     }
 
-    const numAmount = parseFloat(amount);
+    const numAmount = parseFloat(effectiveAmount);
     const tsaFee = numAmount * 0.005;
     const netAmount = numAmount - tsaFee;
 
