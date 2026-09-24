@@ -244,9 +244,12 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         throw new Error(data.error);
       }
 
+      const resolvedPacs002Xml = data.pacs002Xml || data.xrplSidecar?.pacs002Xml || null;
+      const resolvedPacs002 = data.pacs002 || data.xrplSidecar?.pacs002 || null;
+
       setAdr555Report(data.adr555Report || null);
-      if (data.pacs002Xml) {
-        setPacs002Xml(data.pacs002Xml);
+      if (resolvedPacs002Xml) {
+        setPacs002Xml(resolvedPacs002Xml);
         setActiveInspectorTab("pacs002");
       } else if (data.adr555Report) {
         setActiveInspectorTab("enclave");
@@ -254,8 +257,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
       setLastTxSig(data.txSignature || data.xrplTxHash || null);
       setLastExplorerUrl(data.explorerUrl || null);
-      if (data.xrplSidecar?.explorerUrl) {
-        setLastXrplExplorerUrl(data.xrplSidecar.explorerUrl);
+      if (data.xrplExplorerUrl || data.xrplSidecar?.explorerUrl) {
+        setLastXrplExplorerUrl(data.xrplExplorerUrl || data.xrplSidecar?.explorerUrl);
       } else if (rail === "xrpl") {
         setLastXrplExplorerUrl(data.explorerUrl || null);
       }
@@ -279,7 +282,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             : rail === "xrpl"
             ? "XRPL Altnet"
             : "Solana Token-2022",
-        pacs002: data.pacs002,
+        pacs002: resolvedPacs002,
         wotsDigest: data.adr555Report?.attestation?.wotsPlus?.wotsLeafRoot,
         lane: data.adr555Report?.concurrencyAllocation?.laneId,
       };
@@ -287,7 +290,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       onSettlement(blotterRow);
       setStatus("done");
 
-      if (data.txSignature && !data.xrplTxHash) {
+      if (data.txSignature) {
         const updatedXml = buildInstitutionalPacs008(
           {
             type: "fdc3.paymentContext",

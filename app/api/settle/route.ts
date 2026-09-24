@@ -62,8 +62,72 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Rail Dispatch: Trilateral Powerhouse (Solana + XRPL Altnet + Synaptic L1) ──
+    if (rail === "trilateral") {
+      const keypair = getDemoKeypair();
+      const ctx: FDC3PaymentContext = {
+        type: "fdc3.paymentContext",
+        amount: numAmount,
+        currency: pair.split("/")[0] || "USD",
+        pair,
+        rate: parseFloat(rate),
+        debtor: {
+          name: debtorName,
+          account: debtorAcct,
+        },
+        creditor: {
+          name: creditorName,
+          account: creditorAcct,
+        },
+        networkRouting: {
+          rail: "Solana Token-2022",
+          channel: body.channel || "global",
+          uetr,
+        },
+      };
+
+      const [settlement, xrplRes] = await Promise.all([
+        dispatchToken2022Fdc3Settlement(ctx, keypair, uetr, msgId),
+        dispatchXrplSettlement({
+          uetr,
+          amount: numAmount,
+          pair,
+          msgId,
+          debtorName,
+          creditorName,
+        }),
+      ]);
+
+      return NextResponse.json({
+        ok: true,
+        rail: "Trilateral Powerhouse (Solana + XRPL + Synaptic L1)",
+        uetr,
+        msgId,
+        txSignature: settlement.txSignature,
+        slot: settlement.slot,
+        confirmationStatus: "confirmed",
+        explorerUrl: settlement.explorerUrl,
+        mint: settlement.mint,
+        sourceAccount: settlement.sourceAccount,
+        destinationAccount: settlement.destinationAccount,
+        token2022Program: settlement.token2022Program,
+        memoProgram: settlement.memoProgram,
+        postDebtorBalance: settlement.postDebtorBalance,
+        postCreditorBalance: settlement.postCreditorBalance,
+        // Expose XRPL and pacs.002 receipt directly at top level
+        xrplTxHash: xrplRes.xrplTxHash,
+        xrplExplorerUrl: xrplRes.explorerUrl,
+        drops: xrplRes.drops,
+        pacs002: xrplRes.pacs002,
+        pacs002Xml: xrplRes.pacs002Xml,
+        adr555Report,
+        xrplSidecar: xrplRes,
+        timestamp: settlement.timestamp,
+      });
+    }
+
     // ── Rail Dispatch: XRPL Altnet Interledger ──────────────────────────
-    if (rail === "xrpl" || rail === "trilateral") {
+    if (rail === "xrpl") {
       const xrplRes = await dispatchXrplSettlement({
         uetr,
         amount: numAmount,
@@ -73,34 +137,31 @@ export async function POST(req: NextRequest) {
         creditorName,
       });
 
-      if (!xrplRes.ok && rail === "xrpl") {
+      if (!xrplRes.ok) {
         throw new Error(xrplRes.error || "XRPL settlement failed");
       }
 
-      // If pure XRPL, return immediately
-      if (rail === "xrpl") {
-        return NextResponse.json({
-          ok: true,
-          rail: "XRPL Altnet (Interledger Bridge)",
-          uetr,
-          msgId,
-          xrplTxHash: xrplRes.xrplTxHash,
-          txSignature: xrplRes.xrplTxHash,
-          slot: xrplRes.checkpointHeight,
-          checkpointHeight: xrplRes.checkpointHeight,
-          confirmationStatus: "confirmed",
-          explorerUrl: xrplRes.explorerUrl,
-          drops: xrplRes.drops,
-          corridorId: xrplRes.corridorId,
-          fxRate: xrplRes.fxRate,
-          senderAddress: xrplRes.senderAddress,
-          receiverAddress: xrplRes.receiverAddress,
-          pacs002: xrplRes.pacs002,
-          pacs002Xml: xrplRes.pacs002Xml,
-          adr555Report,
-          timestamp: new Date().toISOString(),
-        });
-      }
+      return NextResponse.json({
+        ok: true,
+        rail: "XRPL Altnet (Interledger Bridge)",
+        uetr,
+        msgId,
+        xrplTxHash: xrplRes.xrplTxHash,
+        txSignature: xrplRes.xrplTxHash,
+        slot: xrplRes.checkpointHeight,
+        checkpointHeight: xrplRes.checkpointHeight,
+        confirmationStatus: "confirmed",
+        explorerUrl: xrplRes.explorerUrl,
+        drops: xrplRes.drops,
+        corridorId: xrplRes.corridorId,
+        fxRate: xrplRes.fxRate,
+        senderAddress: xrplRes.senderAddress,
+        receiverAddress: xrplRes.receiverAddress,
+        pacs002: xrplRes.pacs002,
+        pacs002Xml: xrplRes.pacs002Xml,
+        adr555Report,
+        timestamp: new Date().toISOString(),
+      });
     }
 
     // ── Rail Dispatch: Solana Token-2022 ──────────────────────────────────
@@ -128,26 +189,9 @@ export async function POST(req: NextRequest) {
 
     const settlement = await dispatchToken2022Fdc3Settlement(ctx, keypair, uetr, msgId);
 
-    // If Trilateral Redundancy, also trigger XRPL proof
-    let xrplSidecar: any = null;
-    if (rail === "trilateral") {
-      try {
-        xrplSidecar = await dispatchXrplSettlement({
-          uetr,
-          amount: numAmount,
-          pair,
-          msgId,
-          debtorName,
-          creditorName,
-        });
-      } catch {
-        // Redundant rail non-blocking
-      }
-    }
-
     return NextResponse.json({
       ok: true,
-      rail: rail === "trilateral" ? "Trilateral Powerhouse (Solana + XRPL + Synaptic L1)" : "Solana Token-2022 (RequiredMemoTransfers)",
+      rail: "Solana Token-2022 (RequiredMemoTransfers)",
       uetr,
       msgId,
       txSignature: settlement.txSignature,
@@ -162,7 +206,6 @@ export async function POST(req: NextRequest) {
       postDebtorBalance: settlement.postDebtorBalance,
       postCreditorBalance: settlement.postCreditorBalance,
       adr555Report,
-      xrplSidecar,
       timestamp: settlement.timestamp,
     });
   } catch (err) {
