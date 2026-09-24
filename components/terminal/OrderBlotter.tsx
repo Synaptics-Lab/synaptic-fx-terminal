@@ -17,6 +17,10 @@ export interface BlotterRow {
   creditorName: string;
   txSignature: string;
   explorerUrl: string;
+  solanaExplorerUrl?: string;
+  synapticExplorerUrl?: string;
+  xrplExplorerUrl?: string;
+  checkpointHeight?: number;
   status: "PENDING" | "CONFIRMED" | "FAILED";
   channel?: FDC3Channel;
   rail?: string;
@@ -227,17 +231,63 @@ export function OrderBlotter({ rows }: OrderBlotterProps) {
                 </td>
                 <td className="px-2.5 py-1.5 whitespace-nowrap">
                   {row.txSignature ? (
-                    <a
-                      href={row.explorerUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-mono text-[9.5px] group/link"
-                    >
-                      <span className="underline underline-offset-2 decoration-sky-800 group-hover/link:decoration-sky-400">
-                        {row.txSignature.slice(0, 5)}…{row.txSignature.slice(-5)}
-                      </span>
-                      <ExternalLink className="w-2.5 h-2.5 text-sky-500 opacity-60 group-hover/link:opacity-100" />
-                    </a>
+                    <div className="flex items-center gap-1.5">
+                      <Tooltip content={`Settlement Ref: ${row.txSignature}`} copyable copyText={row.txSignature}>
+                        <a
+                          href={row.explorerUrl || row.solanaExplorerUrl || row.synapticExplorerUrl || row.xrplExplorerUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-zinc-300 hover:text-white font-mono text-[9.5px] group/link mr-0.5"
+                        >
+                          <span className="underline underline-offset-2 decoration-zinc-700 group-hover/link:decoration-amber-400">
+                            {row.txSignature.slice(0, 5)}…{row.txSignature.slice(-5)}
+                          </span>
+                        </a>
+                      </Tooltip>
+
+                      {/* Rail shortcuts: Solana first, then SynapticChain, then XRPL */}
+                      {row.solanaExplorerUrl && (
+                        <Tooltip content="Inspect Token-2022 RequiredMemo on Solana Devnet">
+                          <a
+                            href={row.solanaExplorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-1 py-0.2 text-[8px] font-bold font-mono bg-sky-950/60 border border-sky-600/60 text-sky-300 hover:bg-sky-900 transition-colors rounded-none inline-flex items-center gap-0.5"
+                          >
+                            <span>SOL</span>
+                            <ExternalLink className="w-2 h-2 opacity-70" />
+                          </a>
+                        </Tooltip>
+                      )}
+
+                      {row.synapticExplorerUrl && (
+                        <Tooltip content={`Inspect Canonical State Root & Checkpoint #${row.checkpointHeight || 'Canonical'} on SynapticChain Explorer`}>
+                          <a
+                            href={row.synapticExplorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-1 py-0.2 text-[8px] font-bold font-mono bg-emerald-950/60 border border-emerald-600/60 text-emerald-300 hover:bg-emerald-900 transition-colors rounded-none inline-flex items-center gap-0.5"
+                          >
+                            <span>SYN</span>
+                            <ExternalLink className="w-2 h-2 opacity-70" />
+                          </a>
+                        </Tooltip>
+                      )}
+
+                      {row.xrplExplorerUrl && (
+                        <Tooltip content="Inspect SHAMap DENSE-16 Inclusion Proof on XRPL Altnet">
+                          <a
+                            href={row.xrplExplorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-1 py-0.2 text-[8px] font-bold font-mono bg-amber-950/60 border border-amber-600/60 text-amber-300 hover:bg-amber-900 transition-colors rounded-none inline-flex items-center gap-0.5"
+                          >
+                            <span>XRP</span>
+                            <ExternalLink className="w-2 h-2 opacity-70" />
+                          </a>
+                        </Tooltip>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-zinc-600">—</span>
                   )}

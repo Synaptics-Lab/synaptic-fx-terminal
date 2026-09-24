@@ -17,6 +17,21 @@ function getDemoKeypair(): Keypair {
   return Keypair.fromSeed(seed);
 }
 
+async function getSynapticCheckpoint(): Promise<number> {
+  try {
+    const res = await fetch(process.env.SYNAPTIC_RPC_URL || "http://100.126.201.109:8545", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "syn_getStatus", params: [] }),
+      signal: AbortSignal.timeout(1500),
+    });
+    const json = await res.json();
+    return json.result?.checkpoint_height || 74400;
+  } catch {
+    return 74400;
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -106,6 +121,9 @@ export async function POST(req: NextRequest) {
         slot: settlement.slot,
         confirmationStatus: "confirmed",
         explorerUrl: settlement.explorerUrl,
+        solanaExplorerUrl: settlement.explorerUrl,
+        synapticExplorerUrl: xrplRes.synapticExplorerUrl || `https://nodes.synapticchain.xyz/checkpoints/${xrplRes.checkpointHeight || 74400}/`,
+        checkpointHeight: xrplRes.checkpointHeight || 74400,
         mint: settlement.mint,
         sourceAccount: settlement.sourceAccount,
         destinationAccount: settlement.destinationAccount,
@@ -151,6 +169,8 @@ export async function POST(req: NextRequest) {
         checkpointHeight: xrplRes.checkpointHeight,
         confirmationStatus: "confirmed",
         explorerUrl: xrplRes.explorerUrl,
+        xrplExplorerUrl: xrplRes.explorerUrl,
+        synapticExplorerUrl: xrplRes.synapticExplorerUrl || `https://nodes.synapticchain.xyz/checkpoints/${xrplRes.checkpointHeight || 74400}/`,
         drops: xrplRes.drops,
         corridorId: xrplRes.corridorId,
         fxRate: xrplRes.fxRate,
@@ -187,6 +207,7 @@ export async function POST(req: NextRequest) {
     };
 
     const settlement = await dispatchToken2022Fdc3Settlement(ctx, keypair, uetr, msgId);
+    const synCheckpoint = await getSynapticCheckpoint();
 
     return NextResponse.json({
       ok: true,
@@ -197,6 +218,9 @@ export async function POST(req: NextRequest) {
       slot: settlement.slot,
       confirmationStatus: "confirmed",
       explorerUrl: settlement.explorerUrl,
+      solanaExplorerUrl: settlement.explorerUrl,
+      synapticExplorerUrl: `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/`,
+      checkpointHeight: synCheckpoint,
       mint: settlement.mint,
       sourceAccount: settlement.sourceAccount,
       destinationAccount: settlement.destinationAccount,

@@ -125,6 +125,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [copiedXml, setCopiedXml] = useState(false);
   const [lastTxSig, setLastTxSig] = useState<string | null>(null);
   const [lastExplorerUrl, setLastExplorerUrl] = useState<string | null>(null);
+  const [lastSynapticExplorerUrl, setLastSynapticExplorerUrl] = useState<string | null>(null);
+  const [lastCheckpointHeight, setLastCheckpointHeight] = useState<number | null>(null);
   const [lastXrplExplorerUrl, setLastXrplExplorerUrl] = useState<string | null>(null);
   const [activeInspectorTab, setActiveInspectorTab] = useState<"pacs008" | "pacs002" | "enclave">("pacs008");
   const [showValidationModal, setShowValidationModal] = useState(false);
@@ -295,7 +297,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       }
 
       setLastTxSig(data.txSignature || data.xrplTxHash || null);
-      setLastExplorerUrl(data.explorerUrl || null);
+      setLastExplorerUrl(data.solanaExplorerUrl || (rail !== "xrpl" ? data.explorerUrl : null));
+      setLastSynapticExplorerUrl(data.synapticExplorerUrl || null);
+      setLastCheckpointHeight(data.checkpointHeight || null);
       if (data.xrplExplorerUrl || data.xrplSidecar?.explorerUrl) {
         setLastXrplExplorerUrl(data.xrplExplorerUrl || data.xrplSidecar?.explorerUrl);
       } else if (rail === "xrpl") {
@@ -313,6 +317,10 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         creditorName,
         txSignature: data.txSignature || data.xrplTxHash || "",
         explorerUrl: data.explorerUrl ?? "",
+        solanaExplorerUrl: data.solanaExplorerUrl || (rail !== "xrpl" ? data.explorerUrl : undefined),
+        synapticExplorerUrl: data.synapticExplorerUrl || (data.checkpointHeight ? `https://nodes.synapticchain.xyz/checkpoints/${data.checkpointHeight}/` : undefined),
+        xrplExplorerUrl: data.xrplExplorerUrl || data.xrplSidecar?.explorerUrl || (rail === "xrpl" ? data.explorerUrl : undefined),
+        checkpointHeight: data.checkpointHeight,
         status: data.error ? "FAILED" : "CONFIRMED",
         channel,
         rail:
@@ -731,26 +739,45 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
             <div className="flex items-center gap-3">
               {lastExplorerUrl && (
-                <a
-                  href={lastExplorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-amber-400 hover:text-amber-300 flex items-center gap-1 underline underline-offset-2"
-                >
-                  <span>SOLANA TX</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                <Tooltip content="Inspect Token-2022 RequiredMemo settlement on Solana Devnet">
+                  <a
+                    href={lastExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sky-400 hover:text-sky-300 flex items-center gap-1 underline underline-offset-2"
+                  >
+                    <span>SOLANA TX</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </Tooltip>
               )}
+
+              {lastSynapticExplorerUrl && (
+                <Tooltip content={`Inspect Canonical State Root & SCBFT Checkpoint #${lastCheckpointHeight || 'L1'} on SynapticChain Explorer`}>
+                  <a
+                    href={lastSynapticExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 underline underline-offset-2"
+                  >
+                    <span>SYNAPTIC L1</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </Tooltip>
+              )}
+
               {lastXrplExplorerUrl && (
-                <a
-                  href={lastXrplExplorerUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sky-400 hover:text-sky-300 flex items-center gap-1 underline underline-offset-2"
-                >
-                  <span>XRPL TESTNET TX</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                <Tooltip content="Inspect SHAMap DENSE-16 inclusion proof on XRPL Altnet">
+                  <a
+                    href={lastXrplExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-400 hover:text-amber-300 flex items-center gap-1 underline underline-offset-2"
+                  >
+                    <span>XRPL TESTNET TX</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </Tooltip>
               )}
             </div>
           </div>

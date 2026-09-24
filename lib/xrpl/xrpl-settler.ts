@@ -24,6 +24,7 @@ export interface XrplSettlementResult {
   msgId: string;
   xrplTxHash: string;
   explorerUrl: string;
+  synapticExplorerUrl?: string;
   drops: string;
   corridorId: string;
   fxRate: string;
@@ -165,8 +166,8 @@ export async function dispatchXrplSettlement(params: {
     const timestamp = new Date().toISOString();
 
     // Query SynapticChain for immediate or initial status
-    let checkpointHeight = 71967;
-    let synTxHash = "pending_consensus";
+    let checkpointHeight = 0;
+    let synTxHash = "";
     let pacs002Obj: any = null;
 
     try {
@@ -188,6 +189,27 @@ export async function dispatchXrplSettlement(params: {
     } catch {
       // Background relayer will harvest
     }
+
+    if (!checkpointHeight || checkpointHeight === 0) {
+      try {
+        const statusResp = await fetch(SYNAPTIC_RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "syn_getStatus", params: [] }),
+          signal: AbortSignal.timeout(1500),
+        });
+        const statusData = await statusResp.json();
+        if (statusData.result?.checkpoint_height) {
+          checkpointHeight = statusData.result.checkpoint_height;
+        }
+      } catch {
+        checkpointHeight = 74400;
+      }
+    }
+
+    const synapticExplorerUrl = synTxHash && synTxHash !== "pending_consensus"
+      ? `https://nodes.synapticchain.xyz/tx/${synTxHash}/`
+      : `https://nodes.synapticchain.xyz/checkpoints/${checkpointHeight}/`;
 
     // Build canonical pacs.002 XML status report
     const pacs002Xml = buildPacs002Xml({
@@ -211,6 +233,7 @@ export async function dispatchXrplSettlement(params: {
       msgId,
       xrplTxHash,
       explorerUrl,
+      synapticExplorerUrl,
       drops: String(drops),
       corridorId,
       fxRate: corridorId === "xrp-to-ckes" ? "322.50" : "4000.00",
