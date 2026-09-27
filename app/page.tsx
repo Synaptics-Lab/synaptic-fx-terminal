@@ -21,12 +21,7 @@ export default function TerminalPage() {
     updateTime();
     const interval = setInterval(updateTime, 1000);
 
-    // First-time visitor check for IntroModal
-    const seen = localStorage.getItem("bankerx_intro_seen");
-    if (!seen) {
-      setShowIntroModal(true);
-    }
-
+    // IntroModal is available on-demand via the ARCHITECTURE BRIEFING button
     return () => clearInterval(interval);
   }, []);
 

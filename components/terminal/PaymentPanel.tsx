@@ -158,12 +158,14 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       if (ctx.amount) setAmount(String(ctx.amount));
       if (ctx.pair) setPair(ctx.pair);
       if (ctx.debtor?.name) setDebtorName(ctx.debtor.name);
-      if (ctx.debtor?.account) setDebtorAcct(ctx.debtor.account);
+      if (ctx.debtor?.account && ctx.debtor.account.length >= 32) setDebtorAcct(ctx.debtor.account);
       if (ctx.creditor?.name) setCreditorName(ctx.creditor.name);
-      if (ctx.creditor?.account) setCreditorAcct(ctx.creditor.account);
+      if (ctx.creditor?.account && ctx.creditor.account.length >= 32) setCreditorAcct(ctx.creditor.account);
       if (ctx.id?.UETR || ctx.networkRouting?.uetr) {
         setCurrentUetr(ctx.id?.UETR || ctx.networkRouting?.uetr);
       }
+      // Ensure intro modal does not block the review modal
+      try { localStorage.setItem("bankerx_intro_seen", "true"); } catch {}
       setStatus("review");
       console.info("[BankerX] Received inbound FDC3 paymentContext from TraderX", ctx);
     };
@@ -186,7 +188,27 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       }
     };
     window.addEventListener("message", messageHandler);
-    return () => window.removeEventListener("message", messageHandler);
+
+    // Universal FDC3 Intent Bus Poller (works across tabs, split-screen, windows, and containers)
+    let lastSeenIntentTs = Date.now() - 5000;
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/fdc3/intent");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.timestamp > lastSeenIntentTs && data.context) {
+          lastSeenIntentTs = data.timestamp;
+          handleInboundPayment(data.context);
+        }
+      } catch {
+        // Non-blocking network check
+      }
+    }, 400);
+
+    return () => {
+      window.removeEventListener("message", messageHandler);
+      clearInterval(pollInterval);
+    };
   }, []);
 
   const handleOpenReview = () => {
@@ -210,7 +232,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       .padStart(4, "0");
     const msgId = `SYN-FINOS-${dateStr}-${randStr}`;
 
-    const uetr = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const uetr = currentUetr || "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
       const v = c === "x" ? r : (r & 0x3) | 0x8;
       return v.toString(16);
@@ -336,6 +358,30 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
       onSettlement(blotterRow);
       setStatus("done");
+
+      // Broadcast settlement outcome to TraderX via FDC3 relay and opener postMessage
+      const statusPayload = {
+        type: "synaptic.settlementStatus",
+        id: { UETR: uetr },
+        uetr: uetr,
+        status: data.error ? "Rjct" : "Acsc",
+        traderxSettlementStatus: data.error ? "Rjct" : "Acsc",
+        txSignature: data.txSignature || data.xrplTxHash || "",
+        explorerUrl: data.solanaExplorerUrl || (rail !== "xrpl" ? data.explorerUrl : null),
+        slot: data.slot,
+      };
+
+      fetch("/api/fdc3/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(statusPayload),
+      }).catch(() => {});
+
+      if (typeof window !== "undefined" && window.opener) {
+        try {
+          window.opener.postMessage(statusPayload, "*");
+        } catch {}
+      }
 
       if (data.txSignature) {
         const updatedXml = buildInstitutionalPacs008(
