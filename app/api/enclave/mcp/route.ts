@@ -3,17 +3,35 @@ import {
   executeADR555GuardianPreflight,
   screenSanctionsBloom,
   generateWotsPlusAttestation,
+  verifyPreflightAttestation,
   nonceEngine,
 } from "@/lib/enclave/adr555-guardian";
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+/**
+ * CORS allowlist (S5): the enclave MCP endpoint is consumed cross-origin only
+ * by the traderX blotter's desktop agent (and the local conformance runner).
+ * Any other origin gets no ACAO header.
+ */
+const CORS_ALLOWED_ORIGINS = new Set([
+  "https://traderx.synapticchain.xyz",
+  "http://localhost:3001",
+]);
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+function corsHeaders(req: NextRequest): Record<string, string> {
+  const origin = req.headers.get("origin") ?? "";
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+  if (CORS_ALLOWED_ORIGINS.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers.Vary = "Origin";
+  }
+  return headers;
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(req) });
 }
 
 export async function POST(req: NextRequest) {
@@ -40,8 +58,23 @@ export async function POST(req: NextRequest) {
                   pair: { type: "string", description: "FX currency pair e.g. USD/KES" },
                   debtor: { type: "string", description: "Debtor entity account/name" },
                   creditor: { type: "string", description: "Creditor entity account/name" },
-                  tsaFee: { type: "number", description: "Statutory 0.50% TSA levy" },
-                  netAmount: { type: "number", description: "Net settlement amount" },
+                  tsaFee: { type: "number", description: "Caller-suggested levy — cross-checked only; canonical 0.50% schedule wins" },
+                  netAmount: { type: "number", description: "Caller-suggested net — cross-checked only; canonical derivation wins" },
+                },
+              },
+            },
+            {
+              name: "verify_preflight",
+              description:
+                "Desk-side attestation verification (ADR-555): re-derives the WOTS+ leaf root from (uetr, amount, timestamp) and compares with the report's wotsLeafRoot. Deterministic; the desk honest-rejects a delivered payment whose attestation does not re-derive.",
+              inputSchema: {
+                type: "object",
+                required: ["uetr", "amount", "timestamp", "wotsLeafRoot"],
+                properties: {
+                  uetr: { type: "string", description: "RFC 4122 UUIDv4 SWIFT UETR" },
+                  amount: { type: "number", description: "Gross amount as screened" },
+                  timestamp: { type: "string", description: "ISO 8601 timestamp from the preflight report attestation" },
+                  wotsLeafRoot: { type: "string", description: "wotsLeafRoot from the preflight report attestation" },
                 },
               },
             },
@@ -86,7 +119,7 @@ export async function POST(req: NextRequest) {
             },
           ],
         },
-      }, { headers: CORS_HEADERS });
+      }, { headers: corsHeaders(req) });
     }
 
     if (method === "tools/call") {
@@ -100,8 +133,10 @@ export async function POST(req: NextRequest) {
           pair: args.pair || "USD/KES",
           debtor: args.debtor,
           creditor: args.creditor,
-          tsaFee: Number(args.tsaFee || args.amount * 0.005),
-          netAmount: Number(args.netAmount || args.amount * 0.995),
+          // Caller-suggested values are cross-checked only (canonical wins);
+          // omitted entirely when the caller sends just the amount.
+          ...(args.tsaFee !== undefined ? { tsaFee: Number(args.tsaFee) } : {}),
+          ...(args.netAmount !== undefined ? { netAmount: Number(args.netAmount) } : {}),
         });
         return NextResponse.json({
           jsonrpc: "2.0",
@@ -109,7 +144,23 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
           },
-        }, { headers: CORS_HEADERS });
+        }, { headers: corsHeaders(req) });
+      }
+
+      if (toolName === "verify_preflight") {
+        const res = verifyPreflightAttestation(
+          String(args.uetr ?? ""),
+          Number(args.amount),
+          String(args.timestamp ?? ""),
+          String(args.wotsLeafRoot ?? "")
+        );
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
+          },
+        }, { headers: corsHeaders(req) });
       }
 
       if (toolName === "screen_sanctions") {
@@ -120,7 +171,7 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
           },
-        }, { headers: CORS_HEADERS });
+        }, { headers: corsHeaders(req) });
       }
 
       if (toolName === "generate_wots_signature") {
@@ -131,7 +182,7 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
           },
-        }, { headers: CORS_HEADERS });
+        }, { headers: corsHeaders(req) });
       }
 
       if (toolName === "get_lane_allocation") {
@@ -142,23 +193,23 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(laneAlloc, null, 2) }],
           },
-        }, { headers: CORS_HEADERS });
+        }, { headers: corsHeaders(req) });
       }
 
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
         error: { code: -32601, message: `Tool not found: ${toolName}` },
-      }, { headers: CORS_HEADERS });
+      }, { headers: corsHeaders(req) });
     }
 
     return NextResponse.json({
       jsonrpc: "2.0",
       id,
       error: { code: -32600, message: `Unsupported method: ${method}` },
-    }, { headers: CORS_HEADERS });
+    }, { headers: corsHeaders(req) });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ jsonrpc: "2.0", error: { code: -32603, message: msg } }, { status: 500, headers: CORS_HEADERS });
+    return NextResponse.json({ jsonrpc: "2.0", error: { code: -32603, message: msg } }, { status: 500, headers: corsHeaders(req) });
   }
 }

@@ -195,6 +195,35 @@ export function generateWotsPlusAttestation(uetr: string, amount: number, timest
   };
 }
 
+/**
+ * Desk-side attestation verification (ADR-555 S3): the receiving desk
+ * re-derives the WOTS+ leaf root from the report's (uetr, amount, timestamp)
+ * — all three returned in the report — and compares. The enclave endpoint
+ * exposes this as the `verify_preflight` MCP tool; a delivered payment whose
+ * attestation does not re-derive is honest-rejected by the desk BEFORE
+ * settlement. Deterministic: no state, no randomness, no consumption.
+ */
+export function verifyPreflightAttestation(
+  uetr: string,
+  amount: number,
+  timestamp: string,
+  expectedWotsLeafRoot: string
+): { verified: boolean; recomputedWotsLeafRoot: string } {
+  if (!expectedWotsLeafRoot) {
+    return { verified: false, recomputedWotsLeafRoot: "" };
+  }
+  const recomputed = generateWotsPlusAttestation(uetr, amount, timestamp);
+  return {
+    verified: recomputed.wotsLeafRoot === expectedWotsLeafRoot,
+    recomputedWotsLeafRoot: recomputed.wotsLeafRoot,
+  };
+}
+
+/** Canonical TSA levy: 0.50% of the gross instructed amount. */
+export function canonicalTsaFee(amount: number): number {
+  return Number((amount * 0.005).toFixed(6));
+}
+
 // ─── 4. ADR-555 Full Pre-Flight Invariant Guardian ────────────────────────────
 
 export interface ADR555PreflightReport {
@@ -223,6 +252,11 @@ export interface ADR555PreflightReport {
     netCredit: number;
     tsaLevy: number;
     verified: boolean;
+    // Canonical derivation: the guardian computes the levy from its own 0.50%
+    // schedule server-side (S4). Caller-supplied tsaFee/netAmount are only
+    // cross-checked — a mismatch never changes the gate arithmetic.
+    feeSource: "canonical";
+    callerFeeMismatch: boolean;
   };
   concurrencyAllocation: {
     laneId: number;
@@ -235,6 +269,9 @@ export interface ADR555PreflightReport {
   attestation: {
     ed25519SignatureSample: string;
     wotsPlus: WotsSignatureProof;
+    // ISO 8601 UTC timestamp the WOTS+ pre-image was derived over — returned
+    // so a verifier can re-derive the leaf root (S3).
+    timestamp: string;
   };
   error?: string;
 }
@@ -245,8 +282,9 @@ export function executeADR555GuardianPreflight(params: {
   pair: string;
   debtor: string;
   creditor: string;
-  tsaFee: number;
-  netAmount: number;
+  /** Optional caller-suggested levy — cross-checked only, never used (S4). */
+  tsaFee?: number;
+  netAmount?: number;
 }): ADR555PreflightReport {
   const t0 = performance.now();
 
@@ -256,6 +294,14 @@ export function executeADR555GuardianPreflight(params: {
     throw new Error("ADR-555: Invalid schema - UETR and positive amount required");
   }
   const t1_end = performance.now();
+
+  // Canonical fee basis (S4): the levy is the guardian's own 0.50% schedule,
+  // computed server-side. Caller-supplied values are cross-checked only.
+  const tsaFee = canonicalTsaFee(params.amount);
+  const netAmount = Number((params.amount - tsaFee).toFixed(6));
+  const callerFeeMismatch =
+    (params.tsaFee !== undefined && Math.abs(params.tsaFee - tsaFee) > 1e-6) ||
+    (params.netAmount !== undefined && Math.abs(params.netAmount - netAmount) > 1e-6);
 
   // Step 2: Sanctions Bloom Filter Screening
   const t2_start = performance.now();
@@ -288,9 +334,11 @@ export function executeADR555GuardianPreflight(params: {
         invariant: "I-09 Financial Conservation (SigmaDebits == SigmaCredits)",
         delta: -1,
         grossDebit: params.amount,
-        netCredit: params.netAmount,
-        tsaLevy: params.tsaFee,
+        netCredit: netAmount,
+        tsaLevy: tsaFee,
         verified: false,
+        feeSource: "canonical",
+        callerFeeMismatch,
       },
       concurrencyAllocation: {
         laneId: 0,
@@ -310,14 +358,16 @@ export function executeADR555GuardianPreflight(params: {
           chainsSample: [],
           quantumSecurityBits: 128,
         },
+        timestamp: "",
       },
       error: "SANCTIONS_POLICY_VIOLATION: Trade blocked before wire by Desktop Enclave",
     };
   }
 
-  // Step 3: Invariant 9 Solvency Gate (Delta == 0)
+  // Step 3: Invariant 9 Solvency Gate (Delta == 0) — over the CANONICAL fee
+  // basis; a caller-supplied fee no longer moves the gate arithmetic.
   const t3_start = performance.now();
-  const calculatedDelta = Math.abs(params.amount - (params.netAmount + params.tsaFee));
+  const calculatedDelta = Math.abs(params.amount - (netAmount + tsaFee));
   const solvencyVerified = calculatedDelta < 1e-6; // Strict zero-delta
   const t3_end = performance.now();
 
@@ -368,9 +418,11 @@ export function executeADR555GuardianPreflight(params: {
       invariant: "I-09 Financial Conservation (SigmaDebits == SigmaCredits)",
       delta: Number(calculatedDelta.toFixed(6)),
       grossDebit: params.amount,
-      netCredit: params.netAmount,
-      tsaLevy: params.tsaFee,
+      netCredit: netAmount,
+      tsaLevy: tsaFee,
       verified: solvencyVerified,
+      feeSource: "canonical",
+      callerFeeMismatch,
     },
     concurrencyAllocation: {
       laneId: assignedLane,
@@ -383,6 +435,7 @@ export function executeADR555GuardianPreflight(params: {
     attestation: {
       ed25519SignatureSample: ed25519Sample,
       wotsPlus: wotsProof,
+      timestamp: nowIso,
     },
   };
 }

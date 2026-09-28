@@ -48,13 +48,25 @@ export const BANKERX_RECORD = {
  * before delivery to the rendezvous-bound clearing desk. Gated on
  * `fdc3.payment` only: the FINOS conformance suite never raises that context,
  * so the adapter path cannot touch suite traffic.
+ *
+ * Desk binding + lane partitions live in `customProps` — the App Directory
+ * v2 spec-sanctioned extension point (S1). The `mcp-adapter` type is a
+ * declared estate extension, documented in ADR-555
+ * (Synaptic-Source/docs/adr/ADR-555-desktop-mcp-runtime-guardian.md).
+ *
+ * Lane partitions (S2): lane = SHA3-256(Debtor || Pair) % 256 computed inside
+ * the enclave pre-flight; the partition table maps lane ranges → desk appIds
+ * and the desktop agent routes the screened delivery by it. Two real desks:
+ * `bankerx-clearing-desk` (lanes 0–127) and `bankerx-clearing-desk-eu`
+ * (lanes 128–255) — a routed desk with no running instance is launched by
+ * the agent through the normal FDC3 open path.
  */
 export const ALCOVE_RECORD = {
   appId: "synaptic-alcove-enclave",
   name: "Alcove",
   title: "Alcove Enclave · ADR-555",
   description:
-    "Desktop MCP Runtime Guardian: FDC3 adapter that screens StartPayment intents through the ADR-555 local context enclave (sanctions Merkle Bloom filter, Invariant-9 solvency gate, 256-lane rendezvous desk binding) before they reach the BankerX clearing desk. Type mcp-adapter — launched as an MCP tool-call bridge, not a window.",
+    "Desktop MCP Runtime Guardian: FDC3 adapter that screens StartPayment intents through the ADR-555 local context enclave (sanctions Merkle Bloom filter, Invariant-9 solvency gate, 256-lane rendezvous desk binding) before they reach the rendezvous-partitioned clearing desks. Type mcp-adapter — launched as an MCP tool-call bridge, not a window.",
   type: "mcp-adapter",
   details: { url: "https://terminal.synapticchain.xyz/api/enclave/mcp" },
   version: "1.0.0",
@@ -69,12 +81,39 @@ export const ALCOVE_RECORD = {
       },
     },
   },
-  hostManifests: {
-    demo: {
-      // The desk this adapter is mathematically bound to (ADR-062 rendezvous
-      // partition): a directory-miss raise screened by the enclave is
-      // delivered here.
-      deskAppId: "bankerx-clearing-desk",
+  customProps: {
+    alcoveDesk: "bankerx-clearing-desk",
+    alcovePartitions: [
+      { lanes: "0-127", desk: "bankerx-clearing-desk" },
+      { lanes: "128-255", desk: "bankerx-clearing-desk-eu" },
+    ],
+  },
+};
+
+/**
+ * BankerX EU clearing desk — the second real rendezvous-partition desk
+ * (lanes 128–255). Same terminal surface, same StartPayment handling; the
+ * lane the enclave computed decides which desk a screened intent is
+ * delivered to (S2).
+ */
+export const BANKERX_EU_RECORD = {
+  appId: "bankerx-clearing-desk-eu",
+  name: "BankerX EU",
+  title: "BankerX EU Clearing Desk",
+  description:
+    "European FX clearing desk (ADR-062 rendezvous lanes 128–255): receives FDC3 StartPayment intents routed by the Alcove adapter's lane partition, verifies the enclave attestation desk-side, executes Solana Token-2022 settlement with ISO 20022 pacs.008/pacs.002 receipts.",
+  type: "web",
+  details: { url: "https://terminal.synapticchain.xyz/" },
+  version: "1.0.0",
+  publisher: "SynapticChain",
+  interop: {
+    intents: {
+      listensFor: {
+        StartPayment: {
+          displayName: "Start Payment",
+          contexts: ["fdc3.payment"],
+        },
+      },
     },
   },
 };
@@ -93,7 +132,7 @@ import conformanceApps from "./conformance-records.json";
 export const CONFORMANCE_RECORDS: unknown[] = conformanceApps as unknown[];
 
 export function buildApplications(includeConformance: boolean): unknown[] {
-  const apps: unknown[] = [TRADERX_RECORD, BANKERX_RECORD, ALCOVE_RECORD];
+  const apps: unknown[] = [TRADERX_RECORD, BANKERX_RECORD, BANKERX_EU_RECORD, ALCOVE_RECORD];
   if (includeConformance) {
     apps.push(...CONFORMANCE_RECORDS);
   }

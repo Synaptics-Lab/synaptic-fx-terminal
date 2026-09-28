@@ -169,7 +169,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     // release the UETR for a genuine re-dispatch after a failed settlement)
     const seenUetrs = seenUetrsRef.current;
 
-    const handleInboundPayment = (ctx: any) => {
+    const handleInboundPayment = async (ctx: any) => {
       if (!ctx || !isPaymentContext(ctx)) return;
       const inboundUetr: string = ctx.id?.UETR || ctx.networkRouting?.uetr || "";
       if (inboundUetr) {
@@ -196,6 +196,62 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         ctx.creditor?.account && ctx.creditor.account.length >= 32
           ? ctx.creditor.account
           : "BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG";
+
+      // ADR-555 desk-side attestation verification (S3): an adapter-delivered
+      // payment carries an `alcove` block (enclave screen output). The desk
+      // re-derives the WOTS+ leaf root through the enclave's verify_preflight
+      // tool (same-origin) BEFORE executing — a non-re-deriving attestation
+      // honest-rejects here instead of settling.
+      let alcoveVerified: boolean | undefined = undefined;
+      const alcove = ctx.alcove;
+      if (alcove?.wotsPlus?.wotsLeafRoot && alcove.timestamp) {
+        try {
+          const vResp = await fetch("/api/enclave/mcp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "tools/call",
+              params: {
+                name: "verify_preflight",
+                arguments: {
+                  uetr: inboundUetr,
+                  amount: inboundAmount,
+                  timestamp: alcove.timestamp,
+                  wotsLeafRoot: alcove.wotsPlus.wotsLeafRoot,
+                },
+              },
+            }),
+          });
+          const vJson = await vResp.json();
+          const vText = vJson?.result?.content?.find?.((c: any) => c.type === "text")?.text;
+          let vReport: { verified?: boolean } | null = null;
+          try {
+            vReport = vText ? JSON.parse(vText) : null;
+          } catch {
+            vReport = null;
+          }
+          alcoveVerified = vResp.ok && vReport?.verified === true;
+        } catch (e) {
+          console.warn("[BankerX] Alcove attestation verify_preflight unreachable:", e);
+          alcoveVerified = false;
+        }
+        if (!alcoveVerified) {
+          console.warn(
+            "[BankerX] Alcove attestation FAILED desk-side verification — honest reject, no settlement",
+            { uetr: inboundUetr, lane: alcove.lane ?? null }
+          );
+          if (inboundUetr) seenUetrs.delete(inboundUetr);
+          setStatus("review");
+          return;
+        }
+        console.info(
+          "[BankerX] Alcove attestation verified desk-side (WOTS+ leaf root re-derived, lane " +
+            String(alcove.lane ?? "?") + ")",
+          { uetr: inboundUetr }
+        );
+      }
 
       // Mirror the inbound context into the ticket UI so the desk sees what ran.
       setAmount(String(inboundAmount));
@@ -226,6 +282,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         creditorName: inCreditorName,
         creditorAcct: inCreditorAcct,
         uetr: inboundUetr,
+        alcoveVerified,
       });
     };
 
@@ -328,6 +385,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     creditorName: string;
     creditorAcct: string;
     uetr?: string;
+    /** True when the inbound context carried an Alcove ADR-555 attestation
+     * block that the desk re-verified against the enclave before executing. */
+    alcoveVerified?: boolean;
   }
 
   const runSettlement = async (params: SettleParams) => {
@@ -482,6 +542,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         txSignature: data.txSignature || data.xrplTxHash || "",
         explorerUrl: data.solanaExplorerUrl || (rail !== "xrpl" ? data.explorerUrl : null),
         slot: data.slot,
+        // ADR-555: true when the desk re-verified the enclave attestation
+        // before executing; undefined for direct (un-screened) raises.
+        alcoveVerified: params.alcoveVerified ?? null,
       };
 
       fetch("/api/fdc3/status", {
