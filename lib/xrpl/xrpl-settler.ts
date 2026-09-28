@@ -54,7 +54,9 @@ export function buildPacs002Xml(receipt: {
   uetr: string;
   originalMsgId: string;
   receiptMsgId: string;
+  /** Rail-specific settlement tx id (XRPL hash or Solana signature) */
   xrplTxHash: string;
+  /** Synaptic L1 / checkpoint-side tx id (or the rail tx when no L1 leg ran) */
   synTxHash: string;
   checkpointHeight: number;
   status: string;
@@ -63,6 +65,9 @@ export function buildPacs002Xml(receipt: {
   currency: string;
   debtor: string;
   creditor: string;
+  /** Optional rail label + acceptance proof detail; XRPL defaults preserved */
+  railLabel?: string;
+  proofDetail?: string;
 }): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Document xmlns="urn:iso:std:iso:20022:tech:xsd:pacs.002.001.10"
@@ -92,9 +97,9 @@ export function buildPacs002Xml(receipt: {
         <Rsn>
           <Cd>G000</Cd>
         </Rsn>
-        <AddtlInf>Accepted Settlement Completed (Acsc) via SHAMap DENSE-16 inclusion proof</AddtlInf>
+        <AddtlInf>Accepted Settlement Completed (Acsc)${receipt.proofDetail ? " — " + receipt.proofDetail : " via SHAMap DENSE-16 inclusion proof"}</AddtlInf>
       </StsRsnInf>
-      <ClrSysRef>checkpoint:${receipt.checkpointHeight}:tx:${receipt.synTxHash.slice(0, 16)}</ClrSysRef>
+      <ClrSysRef>${receipt.railLabel ? receipt.railLabel + " | " : ""}checkpoint:${receipt.checkpointHeight}:tx:${receipt.synTxHash.slice(0, 16)}</ClrSysRef>
       <OrgnlTxRef>
         <IntrBkSttlmAmt Ccy="${receipt.currency}">${receipt.amount.toFixed(2)}</IntrBkSttlmAmt>
         <SttlmInf>

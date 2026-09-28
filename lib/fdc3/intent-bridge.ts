@@ -1,11 +1,32 @@
 /**
  * FDC3 StartPayment Intent Bridge
- * Emits and receives FDC3 StartPayment intents with fdc3.paymentContext.
+ * Emits and receives FDC3 StartPayment intents with the `fdc3.payment`
+ * context type — the exact name proposed in FINOS FDC3 PR #2204
+ * ("Add `StartPayment` intent and `fdc3.payment` context"). Inbound
+ * contexts are accepted under all three names the estate has used
+ * (`fdc3.payment` proposed-standard, `fdc3.paymentContext` legacy Spec 016,
+ * `synapticchain.payment` proprietary pre-merge discipline) and normalized.
  * Simulates a Bloomberg/OpenFin desktop agent in-browser.
  */
 
+export const PAYMENT_CONTEXT_TYPE = "fdc3.payment";
+/** Context type strings accepted on inbound StartPayment (normalized to PAYMENT_CONTEXT_TYPE). */
+export const ACCEPTED_PAYMENT_CONTEXT_TYPES = [
+  "fdc3.payment",
+  "fdc3.paymentContext",
+  "synapticchain.payment",
+];
+
+export function isPaymentContext(ctx: unknown): boolean {
+  return (
+    !!ctx &&
+    typeof ctx === "object" &&
+    ACCEPTED_PAYMENT_CONTEXT_TYPES.includes((ctx as { type?: string }).type ?? "")
+  );
+}
+
 export interface PaymentContext {
-  type: "fdc3.paymentContext";
+  type: string; // fdc3.payment (PR #2204) — legacy names accepted inbound
   id: { UETR?: string };
   name?: string;
   amount: number;
@@ -41,7 +62,7 @@ class FDC3IntentBridge {
       handlerCount: this.handlers.length,
       channel: "global",
       intentName: "StartPayment",
-      contextType: "fdc3.paymentContext",
+      contextType: PAYMENT_CONTEXT_TYPE,
       standard: "FDC3 3.0 (FINOS PR #2204)",
     };
   }

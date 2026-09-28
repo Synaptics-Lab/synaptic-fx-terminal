@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { FXTicker } from "@/components/terminal/FXTicker";
 import { PaymentPanel } from "@/components/terminal/PaymentPanel";
 import { OrderBlotter, type BlotterRow } from "@/components/terminal/OrderBlotter";
 import { IntroModal } from "@/components/terminal/IntroModal";
@@ -104,8 +103,8 @@ export default function TerminalPage() {
       {/* Intro Briefing Modal */}
       <IntroModal isOpen={showIntroModal} onClose={() => setShowIntroModal(false)} />
 
-      {/* Real-time FX Ticker */}
-      <FXTicker />
+      {/* NOTE: no FX ticker here — market data is the TraderX surface's concern
+          (traderx.synapticchain.xyz). BankerX (this terminal) is settlement only. */}
 
       {/* Main Terminal Layout: Top 55% Payment & Pacs Inspector, Bottom Blotter */}
       <main className="flex-1 flex flex-col min-h-0 divide-y divide-[#1a1a1a]">

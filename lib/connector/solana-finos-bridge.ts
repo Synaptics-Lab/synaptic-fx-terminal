@@ -33,7 +33,7 @@ export interface FDC3Instrument {
 }
 
 export interface FDC3PaymentContext {
-  type: "fdc3.paymentContext";
+  type: string; // fdc3.payment (PR #2204) — legacy names accepted inbound
   id?: { UETR?: string };
   amount: number;
   currency: string;

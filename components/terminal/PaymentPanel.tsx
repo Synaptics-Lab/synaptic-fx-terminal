@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { FX_PAIRS, type PaymentContext, fdc3Bridge } from "@/lib/fdc3/intent-bridge";
+import {
+  FX_PAIRS,
+  type PaymentContext,
+  fdc3Bridge,
+  isPaymentContext,
+  PAYMENT_CONTEXT_TYPE,
+} from "@/lib/fdc3/intent-bridge";
 import {
   buildInstitutionalPacs008,
   validateCBPRPlus,
@@ -154,20 +160,52 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     if (typeof window === "undefined") return;
 
     const handleInboundPayment = (ctx: any) => {
-      if (!ctx) return;
-      if (ctx.amount) setAmount(String(ctx.amount));
-      if (ctx.pair) setPair(ctx.pair);
-      if (ctx.debtor?.name) setDebtorName(ctx.debtor.name);
-      if (ctx.debtor?.account && ctx.debtor.account.length >= 32) setDebtorAcct(ctx.debtor.account);
-      if (ctx.creditor?.name) setCreditorName(ctx.creditor.name);
-      if (ctx.creditor?.account && ctx.creditor.account.length >= 32) setCreditorAcct(ctx.creditor.account);
+      if (!ctx || !isPaymentContext(ctx)) return;
+      // Zero human interaction: an inbound StartPayment from TraderX (or any
+      // FDC3 desktop agent) executes straight through — no operator confirm.
+      const inboundAmount = Number(ctx.amount) || 0;
+      const inboundPair = ctx.pair || "USD/KES";
+      const inDebtorName = ctx.debtor?.name || "Corporate Treasury Desk";
+      const inDebtorAcct =
+        ctx.debtor?.account && ctx.debtor.account.length >= 32
+          ? ctx.debtor.account
+          : "4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG";
+      const inCreditorName = ctx.creditor?.name || "Institutional Liquidity Desk";
+      const inCreditorAcct =
+        ctx.creditor?.account && ctx.creditor.account.length >= 32
+          ? ctx.creditor.account
+          : "BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG";
+
+      // Mirror the inbound context into the ticket UI so the desk sees what ran.
+      setAmount(String(inboundAmount));
+      setPair(inboundPair);
+      setDebtorName(inDebtorName);
+      setDebtorAcct(inDebtorAcct);
+      setCreditorName(inCreditorName);
+      setCreditorAcct(inCreditorAcct);
       if (ctx.id?.UETR || ctx.networkRouting?.uetr) {
         setCurrentUetr(ctx.id?.UETR || ctx.networkRouting?.uetr);
       }
-      // Ensure intro modal does not block the review modal
+      // Ensure intro modal does not block execution
       try { localStorage.setItem("bankerx_intro_seen", "true"); } catch {}
-      setStatus("review");
-      console.info("[BankerX] Received inbound FDC3 paymentContext from TraderX", ctx);
+
+      console.info("[BankerX] Inbound FDC3 StartPayment (auto-executing, zero human interaction)", ctx);
+
+      if (inboundAmount <= 0) {
+        setStatus("review"); // only fall back to manual review when the context is unusable
+        return;
+      }
+      runSettlement({
+        amount: inboundAmount,
+        pair: inboundPair,
+        rail,
+        channel,
+        debtorName: inDebtorName,
+        debtorAcct: inDebtorAcct,
+        creditorName: inCreditorName,
+        creditorAcct: inCreditorAcct,
+        uetr: ctx.id?.UETR || ctx.networkRouting?.uetr || "",
+      });
     };
 
     // Standard FDC3 Agent binding
@@ -183,7 +221,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
     // Cross-window / PostMessage interop for TraderX / Sail / OpenFin integration
     const messageHandler = (evt: MessageEvent) => {
-      if (evt.data?.type === "fdc3.paymentContext" || evt.data?.intent === "StartPayment") {
+      if (isPaymentContext(evt.data?.context) || isPaymentContext(evt.data) || evt.data?.intent === "StartPayment") {
         handleInboundPayment(evt.data.context || evt.data);
       }
     };
@@ -196,7 +234,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         const res = await fetch("/api/fdc3/intent");
         if (!res.ok) return;
         const data = await res.json();
-        if (data && data.timestamp > lastSeenIntentTs && data.context) {
+        if (data && data.timestamp > lastSeenIntentTs && isPaymentContext(data.context)) {
           lastSeenIntentTs = data.timestamp;
           handleInboundPayment(data.context);
         }
@@ -220,7 +258,24 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     setStatus("review");
   };
 
-  const handleExecuteSettlement = async () => {
+  /** Settlement parameters — either from operator state (manual desk) or from an
+   * inbound FDC3 StartPayment context (zero human interaction). */
+  interface SettleParams {
+    amount: number;
+    pair: string;
+    rail: SettlementRail;
+    channel: FDC3Channel;
+    debtorName: string;
+    debtorAcct: string;
+    creditorName: string;
+    creditorAcct: string;
+    uetr?: string;
+  }
+
+  const runSettlement = async (params: SettleParams) => {
+    const { amount, pair, rail, channel, debtorName, debtorAcct, creditorName, creditorAcct } = params;
+    const numAmount = params.amount;
+    const selectedPair = FX_PAIRS.find((p) => p.pair === pair) ?? FX_PAIRS[0];
     setStatus("building");
 
     const d = new Date();
@@ -232,7 +287,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       .padStart(4, "0");
     const msgId = `SYN-FINOS-${dateStr}-${randStr}`;
 
-    const uetr = currentUetr || "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const uetr = params.uetr || "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
       const v = c === "x" ? r : (r & 0x3) | 0x8;
       return v.toString(16);
@@ -244,7 +299,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     // 1. Build ISO 20022 pacs.008
     const initialXml = buildInstitutionalPacs008(
       {
-        type: "fdc3.paymentContext",
+        type: PAYMENT_CONTEXT_TYPE,
         amount: numAmount,
         currency: pair.split("/")[0],
         pair,
@@ -259,7 +314,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
     // 2. Emit FDC3 3.0 intent
     const fdc3Context: PaymentContext = {
-      type: "fdc3.paymentContext",
+      type: PAYMENT_CONTEXT_TYPE,
       id: { UETR: uetr },
       amount: numAmount,
       currency: pair.split("/")[0],
@@ -386,7 +441,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       if (data.txSignature) {
         const updatedXml = buildInstitutionalPacs008(
           {
-            type: "fdc3.paymentContext",
+            type: PAYMENT_CONTEXT_TYPE,
             amount: numAmount,
             currency: pair.split("/")[0],
             pair,
@@ -405,6 +460,25 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       setStatus("error");
       setErrorMsg(msg);
     }
+  };
+
+  // Manual desk execution — operator-initiated settlement from ticket state.
+  const handleExecuteSettlement = () => {
+    if (numAmount <= 0) {
+      setErrorMsg("Amount must be greater than zero");
+      return;
+    }
+    runSettlement({
+      amount: numAmount,
+      pair,
+      rail,
+      channel,
+      debtorName,
+      debtorAcct,
+      creditorName,
+      creditorAcct,
+      uetr: currentUetr || undefined,
+    });
   };
 
   const copyCurrentContent = () => {
@@ -848,7 +922,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         <div className="border border-[#1e1e1e] bg-[#0c0c0c] p-3 space-y-2 text-[10.5px]">
           <div className="flex justify-between border-b border-[#181818] pb-1.5">
             <span className="text-zinc-500 uppercase">FDC3 Intent:</span>
-            <span className="text-amber-400 font-bold">StartPayment (fdc3.paymentContext)</span>
+            <span className="text-amber-400 font-bold">StartPayment (fdc3.payment — FINOS PR #2204)</span>
           </div>
           <div className="flex justify-between border-b border-[#181818] pb-1.5">
             <span className="text-zinc-500 uppercase">Settlement Rail:</span>
