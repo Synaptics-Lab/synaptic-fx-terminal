@@ -156,11 +156,32 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     setAmount(cfg.defaultAmount);
   };
 
+  // Duplicate-delivery guard (component-scoped): TraderX dispatches postMessage AND
+  // the /api/fdc3/intent relay, and this surface delivers via messageHandler AND the
+  // intent-bus poller. Without this guard every inbound StartPayment executes twice —
+  // two real rail transfers for one UETR (proven in the 2026-09-28 browser E2E).
+  const seenUetrsRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
+    // (guard lives in a component-scoped ref so runSettlement's error path can
+    // release the UETR for a genuine re-dispatch after a failed settlement)
+    const seenUetrs = seenUetrsRef.current;
+
     const handleInboundPayment = (ctx: any) => {
       if (!ctx || !isPaymentContext(ctx)) return;
+      const inboundUetr: string = ctx.id?.UETR || ctx.networkRouting?.uetr || "";
+      if (inboundUetr) {
+        if (seenUetrs.has(inboundUetr)) {
+          console.info(
+            "[BankerX] Duplicate StartPayment for UETR ignored (already executing or executed):",
+            inboundUetr
+          );
+          return;
+        }
+        seenUetrs.add(inboundUetr);
+      }
       // Zero human interaction: an inbound StartPayment from TraderX (or any
       // FDC3 desktop agent) executes straight through — no operator confirm.
       const inboundAmount = Number(ctx.amount) || 0;
@@ -183,8 +204,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       setDebtorAcct(inDebtorAcct);
       setCreditorName(inCreditorName);
       setCreditorAcct(inCreditorAcct);
-      if (ctx.id?.UETR || ctx.networkRouting?.uetr) {
-        setCurrentUetr(ctx.id?.UETR || ctx.networkRouting?.uetr);
+      if (inboundUetr) {
+        setCurrentUetr(inboundUetr);
       }
       // Ensure intro modal does not block execution
       try { localStorage.setItem("bankerx_intro_seen", "true"); } catch {}
@@ -204,7 +225,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         debtorAcct: inDebtorAcct,
         creditorName: inCreditorName,
         creditorAcct: inCreditorAcct,
-        uetr: ctx.id?.UETR || ctx.networkRouting?.uetr || "",
+        uetr: inboundUetr,
       });
     };
 
@@ -459,6 +480,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       const msg = err instanceof Error ? err.message : String(err);
       setStatus("error");
       setErrorMsg(msg);
+      // Release the UETR so a genuine re-dispatch after a failed settlement can run.
+      if (params.uetr) seenUetrsRef.current.delete(params.uetr);
     }
   };
 
