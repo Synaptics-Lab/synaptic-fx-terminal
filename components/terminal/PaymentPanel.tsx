@@ -229,12 +229,49 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       });
     };
 
-    // Standard FDC3 Agent binding
-    const fdc3 = (window as any).fdc3;
-    if (fdc3 && typeof fdc3.addIntentListener === "function") {
+    // Standard FDC3 Agent binding — the real FINOS Desktop Agent API.
+    // When this window was opened by the TraderX blotter's desktop agent
+    // (fdc3-agent.js), getAgent() connects via the Web Connection Protocol
+    // (WCP1Hello → WCP3Handshake → MessageChannel) and returns a conformant
+    // DesktopAgent instance; addIntentListener then receives raised intents
+    // over that protocol channel. When no agent is present (direct navigation,
+    // OpenFin/Sail injection) this rejects and the legacy bindings below apply.
+    const legacyFdc3 = (window as any).fdc3;
+    let agentBound = false;
+    try {
+      import("@finos/fdc3-get-agent")
+        .then(({ getAgent }) => getAgent({ timeoutMs: 5000, intentResolver: false, channelSelector: false }))
+        .then((agent: any) => {
+          if (typeof agent?.addIntentListener !== "function") return;
+          return Promise.resolve(
+            agent.addIntentListener("StartPayment", (ctx: any) => handleInboundPayment(ctx))
+          ).then(() => {
+            agentBound = true;
+            console.info(
+              "[BankerX] FDC3 StartPayment listener registered via getAgent() (Web Connection Protocol)",
+              {
+                provider: agent?.getInfo?.().implementationMetadata?.provider,
+                fdc3Version: agent?.getInfo?.().implementationMetadata?.fdc3Version,
+              }
+            );
+          });
+        })
+        .catch((e: unknown) => {
+          console.info(
+            "[BankerX] getAgent() found no desktop agent (expected unless opened from a WCP agent) — legacy bindings in use:",
+            (e as Error)?.message ?? e
+          );
+        });
+    } catch (e) {
+      console.warn("[BankerX] getAgent() binding error", e);
+    }
+    void agentBound;
+
+    // Container-injected API binding (OpenFin / Sail / any preload agent)
+    if (legacyFdc3 && typeof legacyFdc3.addIntentListener === "function") {
       try {
-        fdc3.addIntentListener("StartPayment", (ctx: any) => handleInboundPayment(ctx));
-        console.info("[BankerX] FDC3 StartPayment listener registered");
+        legacyFdc3.addIntentListener("StartPayment", (ctx: any) => handleInboundPayment(ctx));
+        console.info("[BankerX] FDC3 StartPayment listener registered (container-injected window.fdc3)");
       } catch (e) {
         console.warn("[BankerX] fdc3.addIntentListener failed", e);
       }

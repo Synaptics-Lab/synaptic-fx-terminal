@@ -6,6 +6,16 @@ import {
   nonceEngine,
 } from "@/lib/enclave/adr555-guardian";
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const json = await req.json();
@@ -76,7 +86,7 @@ export async function POST(req: NextRequest) {
             },
           ],
         },
-      });
+      }, { headers: CORS_HEADERS });
     }
 
     if (method === "tools/call") {
@@ -99,7 +109,7 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
           },
-        });
+        }, { headers: CORS_HEADERS });
       }
 
       if (toolName === "screen_sanctions") {
@@ -110,7 +120,7 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
           },
-        });
+        }, { headers: CORS_HEADERS });
       }
 
       if (toolName === "generate_wots_signature") {
@@ -121,7 +131,7 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(res, null, 2) }],
           },
-        });
+        }, { headers: CORS_HEADERS });
       }
 
       if (toolName === "get_lane_allocation") {
@@ -132,23 +142,23 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(laneAlloc, null, 2) }],
           },
-        });
+        }, { headers: CORS_HEADERS });
       }
 
       return NextResponse.json({
         jsonrpc: "2.0",
         id,
         error: { code: -32601, message: `Tool not found: ${toolName}` },
-      });
+      }, { headers: CORS_HEADERS });
     }
 
     return NextResponse.json({
       jsonrpc: "2.0",
       id,
       error: { code: -32600, message: `Unsupported method: ${method}` },
-    });
+    }, { headers: CORS_HEADERS });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ jsonrpc: "2.0", error: { code: -32603, message: msg } }, { status: 500 });
+    return NextResponse.json({ jsonrpc: "2.0", error: { code: -32603, message: msg } }, { status: 500, headers: CORS_HEADERS });
   }
 }
