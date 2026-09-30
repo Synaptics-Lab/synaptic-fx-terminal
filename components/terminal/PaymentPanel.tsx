@@ -161,6 +161,11 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   // intent-bus poller. Without this guard every inbound StartPayment executes twice —
   // two real rail transfers for one UETR (proven in the 2026-09-28 browser E2E).
   const seenUetrsRef = useRef<Set<string>>(new Set());
+  // Angular v12 real-DA round trip: when this desk window is bound to a
+  // Desktop Agent over WCP (getAgent), keep the agent ref so settlement
+  // outcomes can be broadcast back to the blotter over the REAL FDC3
+  // protocol (user channel), not just opener postMessage.
+  const fdc3AgentRef = useRef<any>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -304,6 +309,13 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             agent.addIntentListener("StartPayment", (ctx: any) => handleInboundPayment(ctx))
           ).then(() => {
             agentBound = true;
+            fdc3AgentRef.current = agent;
+            // Join the user channel the TraderX blotter listens on, so the
+            // settlement outcome broadcast (runSettlement) reaches its real
+            // addContextListener over the protocol.
+            try {
+              void Promise.resolve(agent.joinUserChannel?.("fdc3.channel.1")).catch(() => {});
+            } catch {}
             console.info(
               "[BankerX] FDC3 StartPayment listener registered via getAgent() (Web Connection Protocol)",
               {
@@ -557,6 +569,21 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         try {
           window.opener.postMessage(statusPayload, "*");
         } catch {}
+      }
+
+      // Angular v12 real-DA round trip: also broadcast the settlement outcome
+      // over the REAL FDC3 protocol so the blotter's addContextListener
+      // (registered on the Desktop Agent API) receives it desk-sourced.
+      // Best-effort: opener postMessage and /api/fdc3/status remain as
+      // redundant transports; this never fabricates a status.
+      if (fdc3AgentRef.current && typeof fdc3AgentRef.current.broadcast === "function") {
+        try {
+          void Promise.resolve(fdc3AgentRef.current.broadcast(statusPayload)).catch((e: unknown) => {
+            console.warn("[BankerX] FDC3 broadcast of settlement status failed (non-fatal):", e);
+          });
+        } catch (e) {
+          console.warn("[BankerX] FDC3 broadcast of settlement status failed (non-fatal):", e);
+        }
       }
 
       if (data.txSignature) {
