@@ -14,14 +14,29 @@ import { buildApplications } from "@/lib/fdc3/appd";
  * locally against this agent).
  */
 
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
-};
+// Origin allowlist (same idiom as the enclave MCP route): the directory is
+// consumed cross-origin only by the estate DAs on the traderX blotter and the
+// local conformance runner. Any other origin gets no ACAO header.
+const CORS_ALLOWED_ORIGINS = new Set([
+  "https://traderx.synapticchain.xyz",
+  "http://localhost:3001",
+]);
 
-export async function OPTIONS() {
-  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
+function corsHeaders(req: NextRequest): Record<string, string> {
+  const origin = req.headers.get("origin") ?? "";
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+  if (CORS_ALLOWED_ORIGINS.has(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers.Vary = "Origin";
+  }
+  return headers;
+}
+
+export async function OPTIONS(req: NextRequest) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(req) });
 }
 
 export async function GET(req: NextRequest) {
@@ -31,6 +46,6 @@ export async function GET(req: NextRequest) {
   const applications = buildApplications(include.includes("conformance"));
   return NextResponse.json(
     { applications, message: "OK" },
-    { headers: CORS_HEADERS }
+    { headers: corsHeaders(req) }
   );
 }

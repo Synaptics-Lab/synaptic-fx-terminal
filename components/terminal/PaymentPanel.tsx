@@ -566,8 +566,14 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       }).catch(() => {});
 
       if (typeof window !== "undefined" && window.opener) {
+        // Origin-restricted opener reply (clean-compliance fix): the blotter
+        // origin-checks its inbound messages, so the desk reply is scoped to
+        // the allowlisted blotter origins instead of "*".
+        const OPENER_TARGET_ORIGINS = ["https://traderx.synapticchain.xyz", "http://localhost:3001"];
         try {
-          window.opener.postMessage(statusPayload, "*");
+          for (const targetOrigin of OPENER_TARGET_ORIGINS) {
+            window.opener.postMessage(statusPayload, targetOrigin);
+          }
         } catch {}
       }
 
