@@ -117,6 +117,15 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [pair, setPair] = useState("USD/KES");
   const [channel, setChannel] = useState<FDC3Channel>("global");
   const [rail, setRail] = useState<SettlementRail>("trilateral");
+  // The inbound StartPayment handlers below register under a mount-only
+  // effect (dependency array []), so they capture the FIRST-render rail
+  // in their closure. Without this mirror the auto-settle path dispatched
+  // by a TraderX raise always ran "trilateral" regardless of the operator's
+  // active rail selection — manual settles were fine, raised ones were not.
+  const railRef = useRef<SettlementRail>(rail);
+  useEffect(() => {
+    railRef.current = rail;
+  }, [rail]);
   const [debtorName, setDebtorName] = useState("Corporate Treasury Desk");
   const [debtorAcct, setDebtorAcct] = useState("4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG");
   const [creditorName, setCreditorName] = useState("Institutional Liquidity Desk");
@@ -280,7 +289,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       runSettlement({
         amount: inboundAmount,
         pair: inboundPair,
-        rail,
+        rail: railRef.current,
         channel,
         debtorName: inDebtorName,
         debtorAcct: inDebtorAcct,
