@@ -33,9 +33,74 @@ import {
 } from "lucide-react";
 import gsap from "gsap";
 import type { BlotterRow } from "./OrderBlotter";
+import { isSynAddress } from "@/lib/identity/syn-address-core";
+
+// Desk identity intake (F-18 fallout fix, 2026-10-04): the desk resolves
+// traderx/bankerx party labels to REAL, key-backed syn1 addresses served by
+// /api/identity/desks (derived in-process from 0600 identity keys — the
+// browser never sees key material, only addresses). No mock/hardcoded
+// fallbacks: an unresolvable party is an honest refusal, never a fake.
+interface DeskIdentity {
+  id: string;
+  name: string;
+  aliases: string[];
+  account: string;
+}
+let deskIdentitiesCache: DeskIdentity[] | null = null;
+async function loadDeskIdentities(): Promise<DeskIdentity[]> {
+  if (deskIdentitiesCache) return deskIdentitiesCache;
+  const r = await fetch("/api/identity/desks");
+  if (!r.ok) throw new Error(`desk identities unavailable (HTTP ${r.status})`);
+  const j = await r.json();
+  if (!j?.ok || !Array.isArray(j.desks) || !j.desks.length) {
+    throw new Error("desk identities unavailable (malformed response)");
+  }
+  deskIdentitiesCache = j.desks as DeskIdentity[];
+  return deskIdentitiesCache;
+}
+/** Resolve one inbound party to a settle-legal syn1 account, or null (refuse — F-18). */
+function resolveInboundAccount(desks: DeskIdentity[], name: string, acct: unknown): string | null {
+  if (isSynAddress(acct)) return acct;
+  if (!desks) return null;
+  const n = String(name ?? "").trim().toLowerCase();
+  const a = String(acct ?? "");
+  const hit =
+    desks.find((d) => d.name.toLowerCase() === n) ??
+    desks.find((d) => d.aliases.includes(a));
+  return hit ? hit.account : null;
+}
 
 interface PaymentPanelProps {
   onSettlement: (row: BlotterRow) => void;
+}
+
+// F-7A live fill: the in-node relayer usually records a settlement on L1
+// SECONDS AFTER the settle response returns, so the response honestly says
+// settlementRecordedOnL1: false while the record is already minutes away.
+// This polls the real syn_getSettlement readback (via /api/settle/l1 — a pure
+// readback, no keys, no state) and returns the anchor ONLY when the checkpoint
+// record actually exists. Nothing here is ever invented.
+const L1_POLL_INTERVAL_MS = 4000;
+const L1_POLL_MAX_POLLS = 20; // ~80s of relayer patience, then the row keeps its honest "pending" state
+
+interface L1Anchor {
+  checkpointHeight: number;
+  synTxHash: string;
+  synapticExplorerUrl: string;
+}
+
+async function pollL1Anchor(hash: string): Promise<L1Anchor | null> {
+  for (let poll = 0; poll < L1_POLL_MAX_POLLS; poll++) {
+    await new Promise((resolve) => setTimeout(resolve, poll === 0 ? 2000 : L1_POLL_INTERVAL_MS));
+    try {
+      const resp = await fetch(`/api/settle/l1?hash=${encodeURIComponent(hash)}`);
+      const data = await resp.json();
+      if (data && data.recorded) return data as L1Anchor;
+    } catch {
+      // Relay lag or a transient RPC refusal — keep polling; absence stays honest.
+    }
+  }
+  return null;
 }
 
 const AMOUNT_PRESETS = [
@@ -126,10 +191,29 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   useEffect(() => {
     railRef.current = rail;
   }, [rail]);
+  // Real desk identities (F-18 fallout fix): resolve once and prefill the
+  // ticket's empty account fields — real key-backed syn1 addresses only.
+  // Never overwrite an operator-typed value.
+  useEffect(() => {
+    let alive = true;
+    loadDeskIdentities()
+      .then((desks) => {
+        if (!alive) return;
+        setDebtorAcct((prev) => prev || desks.find((d) => d.id === "traderx")?.account || "");
+        setCreditorAcct((prev) => prev || desks.find((d) => d.id === "bankerx")?.account || "");
+      })
+      .catch((e) => console.warn("[BankerX] desk identity resolution unavailable:", e));
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [debtorName, setDebtorName] = useState("Corporate Treasury Desk");
-  const [debtorAcct, setDebtorAcct] = useState("4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG");
+  // Account state starts empty until the REAL desk identities resolve (no
+  // mock/hardcoded fallbacks — the settle entry refuses anything that is not
+  // a checksum-valid syn1, F-18); the desk-identity fetch fills them below.
+  const [debtorAcct, setDebtorAcct] = useState("");
   const [creditorName, setCreditorName] = useState("Institutional Liquidity Desk");
-  const [creditorAcct, setCreditorAcct] = useState("BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG");
+  const [creditorAcct, setCreditorAcct] = useState("");
   const [pacsXml, setPacsXml] = useState<string | null>(null);
   const [pacs002Xml, setPacs002Xml] = useState<string | null>(null);
   const [adr555Report, setAdr555Report] = useState<ADR555PreflightReport | null>(null);
@@ -201,15 +285,37 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       const inboundAmount = Number(ctx.amount) || 0;
       const inboundPair = ctx.pair || "USD/KES";
       const inDebtorName = ctx.debtor?.name || "Corporate Treasury Desk";
-      const inDebtorAcct =
-        ctx.debtor?.account && ctx.debtor.account.length >= 32
-          ? ctx.debtor.account
-          : "4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG";
       const inCreditorName = ctx.creditor?.name || "Institutional Liquidity Desk";
-      const inCreditorAcct =
-        ctx.creditor?.account && ctx.creditor.account.length >= 32
-          ? ctx.creditor.account
-          : "BnuCTFWFLLXnSPv2Frs42royiTAYG87WP7p1zRLB4ksG";
+      // F-18 fallout fix: resolve accounts to REAL syn1 identities. A valid
+      // syn1 passes through; desk labels resolve via /api/identity/desks
+      // (key-backed, stable); anything else is an HONEST REFUSAL — no
+      // settlement, no fabricated substitute.
+      let desks: DeskIdentity[] | null = null;
+      try {
+        desks = await loadDeskIdentities();
+      } catch (e) {
+        console.error("[BankerX] Inbound StartPayment refused — desk identity resolution unavailable:", e);
+        setStatus("error");
+        setErrorMsg(`Desk identity resolution unavailable — settlement refused (no fallback identities): ${e instanceof Error ? e.message : String(e)}`);
+        if (inboundUetr) seenUetrs.delete(inboundUetr);
+        return;
+      }
+      const resolvedDebtor = resolveInboundAccount(desks, inDebtorName, ctx.debtor?.account);
+      const resolvedCreditor = resolveInboundAccount(desks, inCreditorName, ctx.creditor?.account);
+      if (!resolvedDebtor || !resolvedCreditor) {
+        // Rejections render as rejections: a dispatch carrying an
+        // unusable party account NEVER settles under a substituted identity.
+        const refused = !resolvedDebtor
+          ? `debtor "${inDebtorName}" (account "${String(ctx.debtor?.account ?? "")}")`
+          : `creditor "${inCreditorName}" (account "${String(ctx.creditor?.account ?? "")}")`;
+        console.error("[BankerX] Inbound StartPayment refused — party account is not a valid syn1 and resolves to no registered desk:", refused);
+        setStatus("error");
+        setErrorMsg(`Refused: ${refused} is not a checksum-valid syn1 address and matches no registered desk — no identity fallback, no settlement.`);
+        if (inboundUetr) seenUetrs.delete(inboundUetr);
+        return;
+      }
+      const inDebtorAcct = resolvedDebtor;
+      const inCreditorAcct = resolvedCreditor;
 
       // ADR-555 desk-side attestation verification (S3): an adapter-delivered
       // payment carries an `alcove` block (enclave screen output). The desk
@@ -552,6 +658,30 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
       onSettlement(blotterRow);
       setStatus("done");
+
+      // The L1 leg (ledger of record) normally lands SECONDS after this
+      // response — the settle-time snapshot honestly reports it not yet
+      // recorded. Poll the real syn_getSettlement readback and upsert the
+      // blotter row + footer anchor only when the checkpoint record actually
+      // exists (F-7A: the SYN shortcut appears when L1 proves it, never a
+      // fabricated anchor).
+      const xrplHash: string = data.xrplTxHash || data.xrplSidecar?.xrplTxHash || "";
+      if (
+        data.settlementRecordedOnL1 !== true &&
+        (rail === "trilateral" || rail === "xrpl") &&
+        /^[0-9a-fA-F]{64}$/.test(xrplHash)
+      ) {
+        void pollL1Anchor(xrplHash).then((anchor) => {
+          if (!anchor) return;
+          setLastSynapticExplorerUrl(anchor.synapticExplorerUrl);
+          setLastCheckpointHeight(anchor.checkpointHeight);
+          onSettlement({
+            ...blotterRow,
+            synapticExplorerUrl: anchor.synapticExplorerUrl,
+            checkpointHeight: anchor.checkpointHeight,
+          });
+        });
+      }
 
       // Broadcast settlement outcome to TraderX via FDC3 relay and opener postMessage
       const statusPayload = {
