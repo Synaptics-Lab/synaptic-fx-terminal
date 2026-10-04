@@ -966,34 +966,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   }, [pendingIntent]);
 
   // Manual desk execution — operator-initiated settlement from ticket state.
-  // When the ticket carries a UETR (retry of a dispatched payment), the desk must
-  // hold the authorization claim first — the settle entry enforces it server-side
-  // (stale-bundle-proof press-to-authorize gate).
-  const handleExecuteSettlement = async () => {
+  const handleExecuteSettlement = () => {
     if (numAmount <= 0) {
       setErrorMsg("Amount must be greater than zero");
-      return;
-    }
-    if (!currentUetr) {
-      runSettlement({
-        amount: numAmount,
-        pair,
-        rail,
-        channel,
-        debtorName,
-        debtorAcct,
-        creditorName,
-        creditorAcct,
-      });
-      return;
-    }
-    const claim = await claimIntentAuth(currentUetr, "claim");
-    if (!claim.ok) {
-      setErrorMsg(
-        claim.claimed === false
-          ? "AUTHORIZATION CONFLICT — this payment is claimed by another desk window. Close stale BankerX windows and retry."
-          : claim.error || "Authorization claim failed — settle entry refused (fail-closed)."
-      );
       return;
     }
     runSettlement({
@@ -1005,9 +980,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       debtorAcct,
       creditorName,
       creditorAcct,
-      uetr: currentUetr,
-    }).finally(() => {
-      void claimIntentAuth(currentUetr, "release");
+      uetr: currentUetr || undefined,
     });
   };
 
