@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { NextRequest, NextResponse } from "next/server";
 import {
   dispatchToken2022Fdc3Settlement,
@@ -139,6 +140,43 @@ export async function POST(req: NextRequest) {
         return fail400(`invalid_syn_address: ${String(label)} is not a checksum-valid syn1 (bech32m) address — the settle entry refuses mock/hardcoded accounts (F-18)`, {
           field: label,
         });
+      }
+    }
+
+    // ── Press-to-authorize gate (024 flow-fix: server-side, stale-bundle-proof) ──
+    // A uetr SUPPLIED ON THE REQUEST means this settle came from an inbound FDC3
+    // StartPayment dispatch. Old/legacy BankerX surfaces auto-executed those into
+    // the void (live incident 2026-10-04: UETR 00f7e23c settled mid-hold with no
+    // authorization press). The client-side claim mutex cannot stop old surfaces —
+    // they predate it — so the authority is enforced HERE: a supplied UETR settles
+    // only while a desk-authorization claim exists at
+    // /tmp/fdc3_intent_claims/<uetr>.json (written by the press-to-authorize flow
+    // in PaymentPanel.tsx, /api/fdc3/intent-claim). Fail-closed: missing claim =
+    // refusal, never execution. Manual-path settles supply no uetr (the route
+    // mints one) and are unaffected.
+    const suppliedUetr =
+      (typeof body.uetr === "string" && body.uetr) ||
+      (typeof body.id?.UETR === "string" && body.id.UETR) ||
+      null;
+    if (suppliedUetr) {
+      const authClaimPath = `/tmp/fdc3_intent_claims/${uetr}.json`;
+      let authHeld = false;
+      try {
+        statSync(authClaimPath);
+        authHeld = true;
+      } catch { /* no claim = not authorized */ }
+      if (!authHeld) {
+        return NextResponse.json(
+          {
+            error:
+              "authorization_required: supplied-UETR settle refused — no desk authorization claim exists for this payment. " +
+              "It must be authorized via the press-to-authorize flow (BankerX held-authorization card). " +
+              "If this surface predates that flow, re-dispatch the intent; the settle entry will not auto-execute it.",
+            uetr,
+            authorization_required: true,
+          },
+          { status: 409 }
+        );
       }
     }
 
