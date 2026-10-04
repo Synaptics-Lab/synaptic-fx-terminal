@@ -25,7 +25,18 @@ export default function TerminalPage() {
   }, []);
 
   const handleSettlement = (row: BlotterRow) => {
-    setRows((prev) => [row, ...prev]);
+    // Upsert by UETR: the L1 anchor fill (post-settle poll) revisits the SAME
+    // settlement, so it must replace its blotter row — a second push would
+    // render the UETR twice (React key collision plus a dup row).
+    setRows((prev) => {
+      const idx = prev.findIndex((r) => r.uetr === row.uetr);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], ...row };
+        return next;
+      }
+      return [row, ...prev];
+    });
   };
 
   return (

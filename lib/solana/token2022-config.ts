@@ -20,12 +20,16 @@ export const TOKEN_2022_USDS_MINT = new PublicKey(
 export const TOKEN_2022_DECIMALS = 6;
 
 // Institutional Participant Registry (Reference Architecture / Simulated)
+// F-10A remediation: the debtor wallet was rotated 2026-10-03 — the legacy
+// signer was derivable from a public constant and owned this treasury; its
+// token account is CLOSED, all USDS moved to the new 0600-persisted desk key
+// (scripts/rotate-settler-key.ts; legacy owner burned).
 export const INSTITUTIONAL_ACCOUNTS = {
   debtor: {
     name: "Corporate Treasury Desk (Simulated Counterparty)",
     bic: "CORPUS33XXX",
-    owner: new PublicKey("5JgSftA8hcdqpEqCEL2B4hksqJSy7Cy3D5d4nYzJWYad"),
-    token2022Account: new PublicKey("4cghWNxgU73yh1SuRK1juQzt8EaKtC8HWGq2yK4jLmeG"),
+    owner: new PublicKey("35JxKdCGamPHcDM7EoBu37GeFrTyPXaS17yxkYE4hsiL"),
+    token2022Account: new PublicKey("DsBPd9Vyh9ZNZDGpDfqQeSXgQxejgqeTVUDuhhWZysUY"),
   },
   creditor: {
     name: "Institutional Liquidity Desk (Simulated Counterparty)",

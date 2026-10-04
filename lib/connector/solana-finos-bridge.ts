@@ -324,13 +324,18 @@ export async function dispatchToken2022Fdc3Settlement(
   ctx: FDC3PaymentContext,
   keypair: Keypair,
   uetr: string,
-  msgId: string
+  msgId: string,
+  extra?: { amount?: number; attestationRoot?: string }
 ): Promise<Token22SettlementReceipt> {
   return await dispatchToken22Settlement({
     uetr,
     msgId,
-    amount: ctx.amount,
+    // extra.amount carries the NET (post-levy) instructed transfer (F-5A);
+    // ctx.amount remains the gross for the ISO 20022 context.
+    amount: extra?.amount ?? ctx.amount,
     fromKeypair: keypair,
+    // F-9A: the ADR-555 attestation root binds the rail tx to the gate verdict.
+    attestationRoot: extra?.attestationRoot,
   });
 }
 

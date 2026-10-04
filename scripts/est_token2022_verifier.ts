@@ -14,6 +14,7 @@ import {
   getAccount,
   getMint,
 } from "@solana/spl-token";
+import { loadSolanaSettlerKeypair } from "../lib/solana/settler-key";
 import {
   buildInstitutionalPacs008,
   validateCBPRPlus,
@@ -97,10 +98,9 @@ async function main() {
 
   const connection = new Connection(DEVNET_RPC, "confirmed");
 
-  // Load Keypair
-  const seed = Buffer.alloc(32);
-  seed.write("synaptic-fx-terminal-devnet-demo");
-  const payerKeypair = Keypair.fromSeed(seed);
+  // Load Keypair — the persisted 0600 desk signer (F-10A rotation: the legacy
+  // public-constant key was burned 2026-10-03 and closed its account).
+  const payerKeypair = loadSolanaSettlerKeypair();
 
   // Context to test
   const testContext: FDC3PaymentContext = {

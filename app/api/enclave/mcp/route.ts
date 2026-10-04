@@ -4,6 +4,7 @@ import {
   screenSanctionsBloom,
   generateWotsPlusAttestation,
   verifyPreflightAttestation,
+  screenSanctionsAccounts,
   nonceEngine,
 } from "@/lib/enclave/adr555-guardian";
 
@@ -58,6 +59,8 @@ export async function POST(req: NextRequest) {
                   pair: { type: "string", description: "FX currency pair e.g. USD/KES" },
                   debtor: { type: "string", description: "Debtor entity account/name" },
                   creditor: { type: "string", description: "Creditor entity account/name" },
+                  debtorAccount: { type: "string", description: "Debtor rail account — screened (F-3)" },
+                  creditorAccount: { type: "string", description: "Creditor rail account — screened (F-3)" },
                   tsaFee: { type: "number", description: "Caller-suggested levy — cross-checked only; canonical 0.50% schedule wins" },
                   netAmount: { type: "number", description: "Caller-suggested net — cross-checked only; canonical derivation wins" },
                 },
@@ -66,15 +69,18 @@ export async function POST(req: NextRequest) {
             {
               name: "verify_preflight",
               description:
-                "Desk-side attestation verification (ADR-555): re-derives the WOTS+ leaf root from (uetr, amount, timestamp) and compares with the report's wotsLeafRoot. Deterministic; the desk honest-rejects a delivered payment whose attestation does not re-derive.",
+                "Desk-side KEYED attestation verification (ADR-555, F-8A fix): verifies the enclave's real Ed25519 (RFC 8032) signature over the canonical preflight message against the estate key, re-derives the key-derived WOTS+ leaf root from (uetr, amount, timestamp), and checks the signature commits the same preflight fact (F-9A). An attestation without signature fields is REFUSED.",
               inputSchema: {
                 type: "object",
-                required: ["uetr", "amount", "timestamp", "wotsLeafRoot"],
+                required: ["uetr", "amount", "timestamp", "wotsLeafRoot", "signatureHex", "publicKeyHex", "signedMessageHex"],
                 properties: {
                   uetr: { type: "string", description: "RFC 4122 UUIDv4 SWIFT UETR" },
                   amount: { type: "number", description: "Gross amount as screened" },
                   timestamp: { type: "string", description: "ISO 8601 timestamp from the preflight report attestation" },
                   wotsLeafRoot: { type: "string", description: "wotsLeafRoot from the preflight report attestation" },
+                  signatureHex: { type: "string", description: "Ed25519 signature hex from the report (ed25519SignatureSample)" },
+                  publicKeyHex: { type: "string", description: "Ed25519 pubkey hex from the report (ed25519PublicKeyHex) — must match the estate enclave key" },
+                  signedMessageHex: { type: "string", description: "Canonical preflight message hex (signedMessageHex) the signature covers" },
                 },
               },
             },
@@ -84,9 +90,10 @@ export async function POST(req: NextRequest) {
                 "Zero-wire-leakage sanctions screening using in-memory Merkle Bloom Filter (OFAC SDN, EU Consolidated, UN Sanctions).",
               inputSchema: {
                 type: "object",
-                required: ["entity"],
+                required: [],
                 properties: {
                   entity: { type: "string", description: "Account address, BIC, or entity identifier" },
+                  accounts: { type: "array", items: { type: "string" }, description: "Rail accounts to screen alongside the entity (F-3)" },
                 },
               },
             },
@@ -107,13 +114,12 @@ export async function POST(req: NextRequest) {
             {
               name: "get_lane_allocation",
               description:
-                "Allocates 256-lane execution tag and ADR-062 256-bit sliding window bitmap nonce for lock-free parallel SMR.",
+                "Allocates 256-lane execution tag and ADR-062 256-bit sliding window bitmap nonce for lock-free parallel SMR. Honors acceptance semantics: duplicate/out-of-window preferred nonces return ok:false with a reason (never silently remapped).",
               inputSchema: {
                 type: "object",
-                required: ["debtor", "pair"],
                 properties: {
-                  debtor: { type: "string" },
-                  pair: { type: "string" },
+                  lane: { type: "number" },
+                  preferredNonce: { type: "number", description: "Request this nonce; refused with ok:false if out of window or already used" },
                 },
               },
             },
@@ -133,6 +139,9 @@ export async function POST(req: NextRequest) {
           pair: args.pair || "USD/KES",
           debtor: args.debtor,
           creditor: args.creditor,
+          // F-3: rail accounts are screened with the same machinery
+          ...(args.debtorAccount ? { debtorAccount: String(args.debtorAccount) } : {}),
+          ...(args.creditorAccount ? { creditorAccount: String(args.creditorAccount) } : {}),
           // Caller-suggested values are cross-checked only (canonical wins);
           // omitted entirely when the caller sends just the amount.
           ...(args.tsaFee !== undefined ? { tsaFee: Number(args.tsaFee) } : {}),
@@ -152,7 +161,14 @@ export async function POST(req: NextRequest) {
           String(args.uetr ?? ""),
           Number(args.amount),
           String(args.timestamp ?? ""),
-          String(args.wotsLeafRoot ?? "")
+          String(args.wotsLeafRoot ?? ""),
+          args.signatureHex || args.publicKeyHex || args.signedMessageHex
+            ? {
+                signatureHex: String(args.signatureHex ?? ""),
+                publicKeyHex: String(args.publicKeyHex ?? ""),
+                messageHex: String(args.signedMessageHex ?? ""),
+              }
+            : undefined
         );
         return NextResponse.json({
           jsonrpc: "2.0",
@@ -164,7 +180,10 @@ export async function POST(req: NextRequest) {
       }
 
       if (toolName === "screen_sanctions") {
-        const res = screenSanctionsBloom(args.entity);
+        const accounts: string[] = Array.isArray(args.accounts) ? args.accounts.map(String) : [];
+        const res = accounts.length
+          ? { ...screenSanctionsBloom(String(args.entity ?? "")), accounts: screenSanctionsAccounts(accounts) }
+          : screenSanctionsBloom(String(args.entity ?? ""));
         return NextResponse.json({
           jsonrpc: "2.0",
           id,
@@ -186,7 +205,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (toolName === "get_lane_allocation") {
-        const laneAlloc = nonceEngine.allocateNonce(args.lane || 14);
+        const laneAlloc = nonceEngine.allocateNonce(Number(args.lane) || 14, args.preferredNonce !== undefined ? Number(args.preferredNonce) : undefined);
         return NextResponse.json({
           jsonrpc: "2.0",
           id,
