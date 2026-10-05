@@ -395,6 +395,165 @@ export async function checkCorridorMinimumBeforeDispatch(params: {
   });
 }
 
+// ── R-U (2026-10-05): rail-readiness pre-claim gate ───────────────────────────
+/**
+ * A trilateral settle whose XRPL leg cannot afford `drops + reserves` is
+ * refused pre-sign by the dispatch-time honest-balance guard — but by then
+ * the Solana leg has ALREADY moved (leg order: claim → Solana → XRPL), so
+ * the outcome is a claimed-failed UETR with a one-sided partial movement
+ * (operator resolution on the queue). Live-proven 2026-10-05: UETR
+ * `79fd6342-e94d-4d1b-b592-ff1dcba65750` — the Solana leg executed
+ * (memo X402P:79fd6342…) while the XRPL guard refused
+ * `xrpl_settler_unfunded` at 21:20:05Z (`ops/SETTLER-UNFUNDED-EPISODE-2026-10-05.md`).
+ *
+ * `checkRailReadinessBeforeClaim` runs the SAME byte-exact math (drops +
+ * reserveBase + ownerCount × reserveInc from the VALIDATED ledger, equality
+ * passes) BEFORE the F-11 claim, so a determinably-unready XRPL side refuses
+ * the whole settle as an honest 422 `rail_unready` — either every leg is
+ * dispatchable, or no leg moves and no UETR strands claimed-failed. The
+ * in-dispatch guard remains unchanged as defense in depth for the residue
+ * the pre-claim read cannot determine (balance moved between the reads, a
+ * validation window opens, the address file is a non-JSON seed shape).
+ *
+ * Fail-open — riding the existing paths — on every shape this gate cannot
+ * determine: pair resolving to no corridor; registry/ledger unreachable;
+ * unparseable fx; settler key absent or non-JSON (the load path covers
+ * faucet creation); a reserve field the ledger did not report (the
+ * `xrpl_settler_reserve_unavailable` failure at dispatch stays the honest
+ * answer). Refusing on auxiliary information would brick settles the gate
+ * never had a full picture of. Solo-Solana settles are NOT gated (no XRPL
+ * leg — same scope as D-A).
+ */
+
+export type RailReadinessCheck =
+  /** Pass — the leg drops and required floor ride back when the gate actually evaluated (undefined when not gated). */
+  | { ok: true; legDrops?: number; requiredDrops?: number; balanceDrops?: number; settlerAddress?: string }
+  /** Refuse — the settler cannot cover leg drops + reserve on the validated ledger. */
+  | { ok: false; reason: "rail_unready"; detail: string };
+
+/** Pure gate core — the byte-exact required-drops math + the refusal text. Offline-testable. */
+export function evaluateRailReadiness(input: {
+  settlerAddress: string;
+  balanceDrops: number;
+  legDrops: number;
+  reserveBaseDrops: number;
+  reserveIncDrops: number;
+  ownerCount: number;
+}): RailReadinessCheck {
+  const requiredDrops = input.legDrops + input.reserveBaseDrops + input.ownerCount * input.reserveIncDrops;
+  if (input.balanceDrops < requiredDrops) {
+    return {
+      ok: false,
+      reason: "rail_unready",
+      detail:
+        `xrpl_settler_unfunded: ${input.settlerAddress} holds ${input.balanceDrops} drops, a ${input.legDrops}-drop leg ` +
+        `plus reserves needs ${requiredDrops} — refusing BEFORE the claim so no rail leg moves (fund the settler wallet; nothing invented)`,
+    };
+  }
+  return { ok: true, legDrops: input.legDrops, requiredDrops, balanceDrops: input.balanceDrops, settlerAddress: input.settlerAddress };
+}
+
+/**
+ * Read the settler's classic address from the persistent key FILE — the
+ * `address` field only. A non-JSON seed shape (raw seed on disk) or an
+ * unreadable file returns null: this gate never derives, formats, logs or
+ * inspects key bytes, and the load path (`loadOrCreateSender`) remains the
+ * only place a wallet may be created.
+ */
+export function readSettlerAddressSafe(keyPath: string = XRPL_SETTLER_KEY_PATH): string | null {
+  try {
+    const raw = readFileSync(keyPath, "utf8").trim();
+    if (!raw.startsWith("{")) return null;
+    const parsed = JSON.parse(raw) as { address?: unknown };
+    const addr = typeof parsed.address === "string" ? parsed.address : null;
+    // XRPL classic-address shape (altnet r-addresses, base58 ≥ 25 chars) —
+    // a malformed address field is not this gate's fact to assert.
+    if (addr && addr.length >= 25 && addr[0] === "r" && /^[1-9A-HJ-NP-Za-km-z]+$/.test(addr)) return addr;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The /api/settle pre-claim gate (R-U): refuse a settle whose XRPL leg the
+ * settler wallet cannot fund, BEFORE the UETR claim (which sits before every
+ * rail branch). Call ONLY for rails that carry an XRPL corridor leg
+ * (xrpl | trilateral) — a solo-Solana settle has no XRPL leg and must not gate.
+ */
+export async function checkRailReadinessBeforeClaim(params: {
+  rail: string;
+  pair: string;
+  /** Exactly what the rail branches pass the settler: netAmount × rate (toFixed(6)). */
+  quoteAmount: number;
+  corridorId?: string;
+  /** Battery seam only: override the settler key path (never used by the route). */
+  settlerKeyPath?: string;
+}): Promise<RailReadinessCheck> {
+  if (params.rail !== "xrpl" && params.rail !== "trilateral") {
+    // Only rails carrying an XRPL corridor leg are gated — a solo-Solana
+    // settle has no XRPL leg to fund (same scope as D-A; the route branches
+    // also scope the call, this is the direct-caller guard).
+    return { ok: true };
+  }
+  if (!Number.isFinite(params.quoteAmount) || params.quoteAmount <= 0) {
+    // Out-of-domain quotes are the settler's own named refusals
+    // (quote_amount_out_of_domain / amount_out_of_domain) — nothing here is
+    // readiness-checkable.
+    return { ok: true };
+  }
+  const corridorId = resolveCorridorForPair(params.pair, params.corridorId);
+  if (!corridorId) return { ok: true }; // F-22 unsupported_pair remains the dispatch-time refusal (unchanged)
+  let rec: LiveCorridorRecord;
+  try {
+    rec = await fetchLiveCorridorRecord(corridorId);
+  } catch {
+    return { ok: true }; // registry unavailable/disabled/invalid-fx → the dispatch-time honest path, unchanged
+  }
+  // The exact floor the dispatch-time branch computes: quote ÷ corridor fx ×1000.
+  const legDrops = Math.floor((params.quoteAmount / parseFloat(rec.fx)) * 1000);
+  if (!Number.isFinite(legDrops) || legDrops <= 0) return { ok: true }; // named at dispatch, unchanged
+  const settlerAddress = readSettlerAddressSafe(params.settlerKeyPath);
+  if (!settlerAddress) return { ok: true }; // key shape/load path's business, unchanged
+  // All ledger reads are read-only (account_info + server_state on the
+  // VALIDATED ledger, same commands the dispatch guard re-issues before
+  // signing). Any read failure is NOT a determinable fact about this leg —
+  // it rides the existing dispatch-time guard (defense in depth, unchanged).
+  const client = new Client(XRPL_WS_ENDPOINT);
+  try {
+    await client.connect();
+    const info = await client.request({
+      command: "account_info",
+      account: settlerAddress,
+      ledger_index: "validated",
+    });
+    const balanceDrops = Number(info.result.account_data.Balance);
+    if (!Number.isFinite(balanceDrops)) return { ok: true }; // unreadable balance → not determinable here
+    const ownerCount = Number(info.result.account_data.OwnerCount) || 0;
+    const serverState = await client.request({ command: "server_state" });
+    const vl = serverState.result.state.validated_ledger as
+      | { reserve_base: number; reserve_inc: number }
+      | undefined;
+    if (!vl || !vl.reserve_base) return { ok: true }; // `xrpl_settler_reserve_unavailable` at dispatch stays the honest answer
+    return evaluateRailReadiness({
+      settlerAddress,
+      balanceDrops,
+      legDrops,
+      reserveBaseDrops: Number(vl.reserve_base),
+      reserveIncDrops: Number(vl.reserve_inc),
+      ownerCount,
+    });
+  } catch {
+    return { ok: true }; // ledger unreachable / account read error → the in-dispatch guard is the backstop, unchanged
+  } finally {
+    try {
+      client.disconnect();
+    } catch {
+      // connection cleanup best-effort only — the verdict no longer depends on it
+    }
+  }
+}
+
 export async function dispatchXrplSettlement(params: {
   uetr: string;
   amount: number;

@@ -9,7 +9,7 @@ import { loadSolanaSettlerKeypair } from "@/lib/solana/settler-key";
 import { isSynAddress } from "@/lib/identity/syn-address";
 import { claimSettle, finalizeSettle, markFailedSettle, settleDigest, type SettleClaimRecord } from "@/lib/enclave/uetr-guard";
 import { checkSettleAttestation, type SettleAttestation } from "@/lib/enclave/settle-attestation";
-import { checkCorridorMinimumBeforeDispatch } from "@/lib/xrpl/xrpl-settler";
+import { checkCorridorMinimumBeforeDispatch, checkRailReadinessBeforeClaim } from "@/lib/xrpl/xrpl-settler";
 
 /**
  * Settle entry — remediated per UTA-2026-10-03-001:
@@ -199,6 +199,37 @@ export async function POST(req: NextRequest) {
             detail: corridorCheck.detail,
             uetr,
             note: "no hold, no mutation — raise the instructed amount above the corridor minimum (or the corridor's min_amount_drops on the relayer registry) and resend",
+          },
+          { status: 422 }
+        );
+      }
+    }
+
+    // ── Rail readiness (R-U, 2026-10-05): refuse an unfunded XRPL leg BEFORE the claim ──
+    // The dispatch-time honest-balance guard runs AFTER the Solana leg has
+    // already moved (trilateral leg order) — a determinably-unfunded settler
+    // used to strand a claimed-failed UETR with a one-sided partial movement
+    // (79fd6342, ops/SETTLER-UNFUNDED-EPISODE-2026-10-05.md). The byte-exact
+    // mirror of the guard's math (leg drops + ledger-reported reserves, from
+    // the validated ledger) refuses here instead: either every leg is
+    // dispatchable, or no leg moves and no UETR is claimed. Fail-closed on
+    // the one fact it asserts; shapes it cannot determine (unreachable
+    // ledger/registry, non-JSON key shapes, unreported reserves) ride the
+    // existing dispatch-time honest paths (solo-Solana settles are not gated).
+    if (rail === "xrpl" || rail === "trilateral") {
+      const railReady = await checkRailReadinessBeforeClaim({
+        rail,
+        pair,
+        quoteAmount: Number((netAmount * rate).toFixed(6)),
+        corridorId: typeof body.corridorId === "string" && body.corridorId ? body.corridorId : undefined,
+      });
+      if (!railReady.ok) {
+        return NextResponse.json(
+          {
+            error: railReady.reason,
+            detail: railReady.detail,
+            uetr,
+            note: "no hold, no claim, no mutation — fund the XRPL settler wallet (altnet faucet) or lower the instructed amount and resend",
           },
           { status: 422 }
         );
