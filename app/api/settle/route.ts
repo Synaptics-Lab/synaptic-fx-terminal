@@ -8,6 +8,7 @@ import { executeADR555GuardianPreflight, SANCTIONS_REGISTER_PROVENANCE } from "@
 import { loadSolanaSettlerKeypair } from "@/lib/solana/settler-key";
 import { isSynAddress } from "@/lib/identity/syn-address";
 import { claimSettle, finalizeSettle, markFailedSettle, settleDigest, type SettleClaimRecord } from "@/lib/enclave/uetr-guard";
+import { checkSettleAttestation, type SettleAttestation } from "@/lib/enclave/settle-attestation";
 
 /**
  * Settle entry — remediated per UTA-2026-10-03-001:
@@ -28,6 +29,11 @@ import { claimSettle, finalizeSettle, markFailedSettle, settleDigest, type Settl
  *    unrecorded, and the explorer/anchor fields are simply omitted.
  *  - F-10A: the Solana signer is a persistent 0600 keyfile; same-origin
  *    enforcement + optional bearer token (ADR555_DESK_TOKEN).
+ *  - GAP-3 (2026-10-05): keyed enclave attestation REQUIRED over the exact
+ *    settle fact, verified server-side BEFORE the UETR claim — missing/
+ *    invalid/mismatched/expired = honest 422, never a hold, never a mutation
+ *    (inbound auto-exec no longer moves funds unattested; stale-tab class
+ *    closed at the money path). Residual disclosed as EXPANSION-QUEUE D-1.
  */
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -140,6 +146,29 @@ export async function POST(req: NextRequest) {
           field: label,
         });
       }
+    }
+
+    // ── Authorization (gap #3): keyed enclave attestation over THIS settle fact ──
+    // Until 2026-10-05 a settle-shaped POST moved real rail funds with zero
+    // authorization (inbound auto-exec; the stale-tab incident class). The
+    // settle now REQUIRES the keyed attestation the desk/screened-inbound
+    // obtained from /api/enclave/mcp preflight_and_sign. Enforced HERE,
+    // fail-closed, BEFORE the UETR claim — a refused settle never touches
+    // claim state and never reaches a rail. Honest 422, never a hold.
+    const attestationCheck = checkSettleAttestation(
+      { uetr, amount: numAmount, pair },
+      (body.enclaveAttestation ?? undefined) as Partial<SettleAttestation> | undefined
+    );
+    if (!attestationCheck.ok) {
+      return NextResponse.json(
+        {
+          error: attestationCheck.reason,
+          detail: attestationCheck.detail,
+          uetr,
+          note: "no hold, no mutation — obtain a keyed attestation via /api/enclave/mcp preflight_and_sign for exactly this (uetr, amount, pair) and resend",
+        },
+        { status: 422 }
+      );
     }
 
     // ── Exactly-once: pre-send UETR claim (F-11 — money path carries intent) ──

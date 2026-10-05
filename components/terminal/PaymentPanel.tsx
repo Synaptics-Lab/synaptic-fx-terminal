@@ -70,6 +70,89 @@ function resolveInboundAccount(desks: DeskIdentity[], name: string, acct: unknow
   return hit ? hit.account : null;
 }
 
+// Gap #3 desk-side attestation mint (2026-10-05): the settle entry no longer
+// executes without a keyed enclave attestation bound to the exact payment
+// fact — the server gate verifies it fail-closed BEFORE claiming the UETR or
+// touching a rail, and stale-tab/same-origin JS without the attestation gets
+// an honest 422. The desk MINTS the attestation client-side via the enclave
+// MCP tool preflight_and_sign (CORS-allowlisted origin), so manual and
+// inbound settles keep identical UX — no hold-card, per the operator ruling.
+// Disclosed residual: attestation proves a real ADR-555 preflight for the
+// payment FACT, not human identity (EXPANSION-QUEUE.md D-1).
+interface SettleAttestation {
+  timestamp: string;
+  wotsLeafRoot: string;
+  signatureHex: string;
+  publicKeyHex: string;
+  signedMessageHex: string;
+}
+
+async function mintEnclaveAttestation(
+  fact: { uetr: string; amount: number; pair: string },
+  parties: { debtor: string; creditor: string; debtorAccount: string; creditorAccount: string }
+): Promise<SettleAttestation> {
+  let resp: Response;
+  try {
+    resp = await fetch("/api/enclave/mcp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "preflight_and_sign",
+          arguments: {
+            uetr: fact.uetr,
+            amount: fact.amount,
+            pair: fact.pair,
+            debtor: parties.debtor,
+            creditor: parties.creditor,
+            debtorAccount: parties.debtorAccount,
+            creditorAccount: parties.creditorAccount,
+          },
+        },
+      }),
+    });
+  } catch (e) {
+    throw new Error(
+      `enclave MCP unreachable — settlement refused before dispatch (the settle gates require a keyed attestation): ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+  const j = await resp.json().catch(() => null);
+  const text = j?.result?.content?.find?.((c: any) => c.type === "text")?.text;
+  let report: any = null;
+  try {
+    report = text ? JSON.parse(text) : null;
+  } catch {
+    report = null;
+  }
+  if (report && report.passed === false) {
+    // The guard refused the payment for cause (screening/solvency) — surface
+    // its own reason verbatim; the server gate would refuse this binding anyway.
+    throw new Error(`ADR-555 preflight refused this payment: ${report.error ?? "preflight not passed"}`);
+  }
+  const a = report?.attestation;
+  if (
+    !a?.timestamp ||
+    !a?.wotsPlus?.wotsLeafRoot ||
+    !a?.ed25519SignatureSample ||
+    !a?.ed25519PublicKeyHex ||
+    !a?.signedMessageHex
+  ) {
+    throw new Error(
+      "enclave preflight returned no keyed attestation — settlement refused (an unkeyed binding would not verify server-side)"
+    );
+  }
+  return {
+    timestamp: a.timestamp,
+    wotsLeafRoot: a.wotsPlus.wotsLeafRoot,
+    signatureHex: a.ed25519SignatureSample,
+    publicKeyHex: a.ed25519PublicKeyHex,
+    signedMessageHex: a.signedMessageHex,
+  };
+}
+
 interface PaymentPanelProps {
   onSettlement: (row: BlotterRow) => void;
 }
@@ -280,8 +363,11 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         }
         seenUetrs.add(inboundUetr);
       }
-      // Zero human interaction: an inbound StartPayment from TraderX (or any
-      // FDC3 desktop agent) executes straight through — no operator confirm.
+      // Attestation-authorized auto-execution (gap #3, 2026-10-05): an inbound
+      // StartPayment from TraderX (or any FDC3 desktop agent) executes straight
+      // through — no hold, no operator confirm — but ONLY with a keyed enclave
+      // attestation over the exact payment fact, which the SERVER re-verifies
+      // fail-closed before dispatch (desk-side verify below stays as UX).
       const inboundAmount = Number(ctx.amount) || 0;
       const inboundPair = ctx.pair || "USD/KES";
       const inDebtorName = ctx.debtor?.name || "Corporate Treasury Desk";
@@ -324,6 +410,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       // honest-rejects here instead of settling.
       let alcoveVerified: boolean | undefined = undefined;
       const alcove = ctx.alcove;
+      let alcoveAttestation: SettleAttestation | undefined = undefined;
       if (alcove?.wotsPlus?.wotsLeafRoot && alcove.timestamp) {
         try {
           const vResp = await fetch("/api/enclave/mcp", {
@@ -340,6 +427,16 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
                   amount: inboundAmount,
                   timestamp: alcove.timestamp,
                   wotsLeafRoot: alcove.wotsPlus.wotsLeafRoot,
+                  // F-8A: the enclave REFUSES unkeyed attestations — the
+                  // keyed Ed25519 fields must be sent through or the desk
+                  // call fails verification by construction.
+                  ...(alcove.signatureHex && alcove.publicKeyHex && alcove.signedMessageHex
+                    ? {
+                        signatureHex: alcove.signatureHex,
+                        publicKeyHex: alcove.publicKeyHex,
+                        signedMessageHex: alcove.signedMessageHex,
+                      }
+                    : {}),
                 },
               },
             }),
@@ -371,6 +468,19 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             String(alcove.lane ?? "?") + ")",
           { uetr: inboundUetr }
         );
+        // Pass the adapter's keyed attestation THROUGH to the settle call: it
+        // is exactly the instrument the desk just re-verified; the server
+        // re-verifies it against the settle fact (server-side enforcement —
+        // gap #3). Unkeyed alcove blocks never reach this branch (they fail
+        // verification above), so this stays undefined only when there was no
+        // alcove block at all — that path mints a fresh attestation below.
+        alcoveAttestation = {
+          timestamp: alcove.timestamp,
+          wotsLeafRoot: alcove.wotsPlus.wotsLeafRoot,
+          signatureHex: alcove.signatureHex,
+          publicKeyHex: alcove.publicKeyHex,
+          signedMessageHex: alcove.signedMessageHex,
+        };
       }
 
       // Mirror the inbound context into the ticket UI so the desk sees what ran.
@@ -386,7 +496,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       // Ensure intro modal does not block execution
       try { localStorage.setItem("bankerx_intro_seen", "true"); } catch {}
 
-      console.info("[BankerX] Inbound FDC3 StartPayment (auto-executing, zero human interaction)", ctx);
+      console.info("[BankerX] Inbound FDC3 StartPayment (attestation-authorized auto-execution — server-verifying gate)", ctx);
 
       if (inboundAmount <= 0) {
         setStatus("review"); // only fall back to manual review when the context is unusable
@@ -403,6 +513,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         creditorAcct: inCreditorAcct,
         uetr: inboundUetr,
         alcoveVerified,
+        // Screened inbound: the adapter's keyed attestation rides through and
+        // is re-verified server-side. Un-screened inbound mints fresh below.
+        attestation: alcoveAttestation,
       });
     };
 
@@ -500,8 +613,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     setStatus("review");
   };
 
-  /** Settlement parameters — either from operator state (manual desk) or from an
-   * inbound FDC3 StartPayment context (zero human interaction). */
+  /** Settlement parameters — either from operator state (manual desk) or from
+   * an inbound FDC3 StartPayment context (attestation-authorized auto-execution). */
   interface SettleParams {
     amount: number;
     pair: string;
@@ -515,6 +628,10 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     /** True when the inbound context carried an Alcove ADR-555 attestation
      * block that the desk re-verified against the enclave before executing. */
     alcoveVerified?: boolean;
+    /** Keyed enclave attestation over the exact settle fact. Inbound-with-
+     * alcove paths carry it through; every other path is minted in
+     * runSettlement (required — the server refuses unattested settles). */
+    attestation?: SettleAttestation;
   }
 
   const runSettlement = async (params: SettleParams) => {
@@ -584,6 +701,19 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     // 3. Dispatch Settlement
     setStatus("settling");
     try {
+      // Gap #3: every settle (manual or inbound) dispatches WITH a keyed
+      // enclave attestation bound to this exact (uetr, amount, pair) fact.
+      // Inbound-with-alcove passes the adapter's attestation through; the
+      // manual path (and un-screened inbound) mints one right here via the
+      // enclave MCP client tool preflight_and_sign. No attestation → no
+      // dispatch — the server refuses it fail-closed before the UETR claim.
+      const enclaveAttestation =
+        params.attestation ??
+        (await mintEnclaveAttestation(
+          { uetr, amount: numAmount, pair },
+          { debtor: debtorName, creditor: creditorName, debtorAccount: debtorAcct, creditorAccount: creditorAcct }
+        ));
+
       const resp = await fetch("/api/settle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -599,12 +729,14 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
           debtorAcct,
           creditorName,
           creditorAcct,
+          enclaveAttestation,
         }),
       });
       const data = await resp.json();
 
       if (data.error && !data.txSignature && !data.xrplTxHash) {
-        throw new Error(data.error);
+        // 422/4xx gate refusals carry a "detail" — surface it verbatim.
+        throw new Error(data.detail ? `${data.error}: ${data.detail}` : data.error);
       }
 
       const resolvedPacs002Xml = data.pacs002Xml || data.xrplSidecar?.pacs002Xml || null;
