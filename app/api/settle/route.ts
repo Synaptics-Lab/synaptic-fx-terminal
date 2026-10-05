@@ -9,6 +9,7 @@ import { loadSolanaSettlerKeypair } from "@/lib/solana/settler-key";
 import { isSynAddress } from "@/lib/identity/syn-address";
 import { claimSettle, finalizeSettle, markFailedSettle, settleDigest, type SettleClaimRecord } from "@/lib/enclave/uetr-guard";
 import { checkSettleAttestation, type SettleAttestation } from "@/lib/enclave/settle-attestation";
+import { checkCorridorMinimumBeforeDispatch } from "@/lib/xrpl/xrpl-settler";
 
 /**
  * Settle entry — remediated per UTA-2026-10-03-001:
@@ -148,6 +149,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── Canonical levy (F-5A): the guardian's 0.50% schedule is authoritative ──
+    // Computed before the gates so the corridor-minimum pre-check (D-A) can
+    // mirror the exact net amount the rail branches will dispatch; the
+    // F-11 claim digest is unchanged (it never included the levy).
+    const tsaFee = Number((numAmount * 0.005).toFixed(6));
+    const netAmount = Number((numAmount - tsaFee).toFixed(6));
+
     // ── Authorization (gap #3): keyed enclave attestation over THIS settle fact ──
     // Until 2026-10-05 a settle-shaped POST moved real rail funds with zero
     // authorization (inbound auto-exec; the stale-tab incident class). The
@@ -171,6 +179,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Corridor minimum (D-A, 2026-10-05): refuse below-min corridor legs BEFORE the claim ──
+    // An XRPL leg under its corridor's min_amount_drops dispatches tesSUCCESS
+    // and is then honest-skipped by the relayer forever (995-drop live-fire
+    // finding) — money moved, nothing recorded. The drop-exact mirror of the
+    // live registry refuses here instead. Fail-closed on the one fact it
+    // asserts; shapes it cannot determine ride the existing dispatch-time
+    // honest paths (solo-Solana settles have no corridor and are not gated).
+    if (rail === "xrpl" || rail === "trilateral") {
+      const corridorCheck = await checkCorridorMinimumBeforeDispatch({
+        pair,
+        quoteAmount: Number((netAmount * rate).toFixed(6)),
+        corridorId: typeof body.corridorId === "string" && body.corridorId ? body.corridorId : undefined,
+      });
+      if (!corridorCheck.ok) {
+        return NextResponse.json(
+          {
+            error: corridorCheck.reason,
+            detail: corridorCheck.detail,
+            uetr,
+            note: "no hold, no mutation — raise the instructed amount above the corridor minimum (or the corridor's min_amount_drops on the relayer registry) and resend",
+          },
+          { status: 422 }
+        );
+      }
+    }
+
     // ── Exactly-once: pre-send UETR claim (F-11 — money path carries intent) ──
     const digest = settleDigest({ uetr, amount: numAmount, pair, msgId, rail });
     const claim = claimSettle(uetr, digest);
@@ -186,10 +220,6 @@ export async function POST(req: NextRequest) {
         { status: 409 }
       );
     }
-
-    // ── Canonical levy (F-5A): the guardian's 0.50% schedule is authoritative ──
-    const tsaFee = Number((numAmount * 0.005).toFixed(6));
-    const netAmount = Number((numAmount - tsaFee).toFixed(6));
 
     // ── Tier 2: ADR-555 Enclave Pre-Flight Guardian Gate ──────────────────
     const adr555Report = executeADR555GuardianPreflight({

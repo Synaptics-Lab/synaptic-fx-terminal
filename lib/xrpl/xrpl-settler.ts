@@ -258,6 +258,38 @@ export function buildPacs002Xml(receipt: {
 
 /** Fetch a corridor's operator-set fx_rate from the LIVE relayer registry (syn_listCorridors) — fail-closed. */
 export async function fetchLiveCorridorFx(corridorId: string): Promise<string> {
+  return (await fetchLiveCorridorRecord(corridorId)).fx;
+}
+
+/** Parsed registry entry for one corridor (the live relayer registry, syn_listCorridors). */
+export interface LiveCorridorRecord {
+  id: string;
+  /** Operator-set fx rate (decimal string) — provenance "operator", never "oracle". */
+  fx: string;
+  enabled: boolean;
+  /**
+   * Registry minimum in drops, or null when the entry carries no parseable
+   * minimum — null means "no derivable floor" and gates nothing (0 is never
+   * invented; the harvester remains the enforcement point).
+   */
+  minDrops: number | null;
+}
+
+export function parseLiveCorridorRecord(hit: any): LiveCorridorRecord {
+  const rawMin = hit?.min_amount_drops;
+  let minDrops: number | null = null;
+  if (typeof rawMin === "number" && Number.isInteger(rawMin) && rawMin >= 0) minDrops = rawMin;
+  else if (typeof rawMin === "string" && /^\d+$/.test(rawMin)) minDrops = parseInt(rawMin, 10);
+  return {
+    id: String(hit?.id ?? ""),
+    fx: String(hit?.fx_rate),
+    enabled: hit?.enabled !== false,
+    minDrops,
+  };
+}
+
+/** Read one corridor's FULL record from the live relayer registry (syn_listCorridors) — fail-closed. */
+export async function fetchLiveCorridorRecord(corridorId: string): Promise<LiveCorridorRecord> {
   let json: any;
   try {
     const resp = await fetch(SYNAPTIC_RPC_URL, {
@@ -274,11 +306,93 @@ export async function fetchLiveCorridorFx(corridorId: string): Promise<string> {
   const hit = corridors.find((c: any) => c?.id === corridorId);
   if (!hit) throw new Error(`corridor_not_registered: "${corridorId}" absent from the live relayer registry — refusing (F-22)`);
   if (hit.enabled === false) throw new Error(`corridor_disabled: "${corridorId}" is disabled on the live registry — refusing`);
-  const fx = String(hit.fx_rate);
-  if (!/^\d+(\.\d+)?$/.test(fx) || parseFloat(fx) <= 0) {
-    throw new Error(`corridor_fx_invalid: "${corridorId}" fx_rate "${fx}" on the live registry is not a positive decimal — refusing`);
+  const rec = parseLiveCorridorRecord(hit);
+  if (!/^\d+(\.\d+)?$/.test(rec.fx) || parseFloat(rec.fx) <= 0) {
+    throw new Error(`corridor_fx_invalid: "${corridorId}" fx_rate "${rec.fx}" on the live registry is not a positive decimal — refusing`);
   }
-  return fx;
+  return rec;
+}
+
+// ── D-A (2026-10-05): corridor-minimum pre-check ──────────────────────────────
+/**
+ * An XRPL corridor leg BELOW the corridor registry's min_amount_drops still
+ * dispatches tesSUCCESS — and then the relayer honest-skips it forever
+ * (convert_amount fails → continue + warn → nothing keyed onchain): the
+ * money moves, syn_getSettlement stays null, pacs.002 stays Acsp forever.
+ * Live-proven 2026-10-05: a 995-drop leg against xrp-to-ckes's 1000-drop
+ * minimum (`ops/POST-REVERT-LIVEFIRE-E2E-RECEIPT-2026-10-05.md`, leg 1).
+ *
+ * `checkCorridorMinimumBeforeDispatch` mirrors the dispatch-time conversion
+ * EXACTLY (quote ÷ live corridor fx, ×1000, floor) and lets /api/settle
+ * refuse the shape as an honest 422 BEFORE the UETR claim — a below-min
+ * settle never moves money and never strands a claim. The gate is fail-closed
+ * on the one fact it asserts: drops < min. Every shape it cannot determine
+ * (pair resolves to no corridor; registry unreachable; entry without a
+ * parseable minimum) gates NOTHING and rides the existing dispatch-time
+ * honest paths — refusing on auxiliary information would brick settles the
+ * harvester never had a floor for.
+ */
+
+export type CorridorMinimumCheck =
+  /** Pass — `corridorId`/`drops`/`minDrops` ride back when the gate actually evaluated (undefined when not gated). */
+  | { ok: true; corridorId?: string; drops?: number; minDrops?: number }
+  /** Refuse — the drops mirror is below the live registry minimum. */
+  | { ok: false; reason: "below_corridor_minimum"; detail: string };
+
+/** Pure gate core — the exact drops mirror + the refusal text. Offline-testable. */
+export function evaluateCorridorMinimum(input: {
+  corridorId: string;
+  fx: string;
+  minDrops: number;
+  quoteAmount: number;
+}): CorridorMinimumCheck {
+  const xrplAmount = input.quoteAmount / parseFloat(input.fx);
+  const drops = Math.floor(xrplAmount * 1000);
+  if (drops < input.minDrops) {
+    return {
+      ok: false,
+      reason: "below_corridor_minimum",
+      detail:
+        `corridor ${input.corridorId} minimum is ${input.minDrops} drops; this settle would deliver ${drops} drops ` +
+        `(quote ${input.quoteAmount} ÷ corridor fx ${input.fx} × 1000). The relayer honestly skips below-corridor-minimum ` +
+        `legs — the XRPL money would move and NEVER be recorded on L1 (pacs.002 stays Acsp forever). ` +
+        `Raise the instructed amount above the minimum and resend.`,
+    };
+  }
+  return { ok: true, corridorId: input.corridorId, drops, minDrops: input.minDrops };
+}
+
+/**
+ * The /api/settle pre-claim gate (D-A): refuse a below-min corridor leg before
+ * the UETR claim. Call ONLY for rails that carry an XRPL corridor leg
+ * (xrpl | trilateral) — a solo-Solana settle has no corridor and must not gate.
+ */
+export async function checkCorridorMinimumBeforeDispatch(params: {
+  pair: string;
+  /** Exactly what the rail branches pass the settler: netAmount × rate (toFixed(6)). */
+  quoteAmount: number;
+  corridorId?: string;
+}): Promise<CorridorMinimumCheck> {
+  if (!Number.isFinite(params.quoteAmount) || params.quoteAmount <= 0) {
+    // Out-of-domain quote amounts are the settler's own named refusal
+    // (quote_amount_out_of_domain) — nothing here is minimum-checkable.
+    return { ok: true };
+  }
+  const corridorId = resolveCorridorForPair(params.pair, params.corridorId);
+  if (!corridorId) return { ok: true }; // F-22 unsupported_pair remains the dispatch-time refusal (unchanged)
+  let rec: LiveCorridorRecord;
+  try {
+    rec = await fetchLiveCorridorRecord(corridorId);
+  } catch {
+    return { ok: true }; // registry unavailable/disabled/invalid-fx → the dispatch-time honest path, unchanged
+  }
+  if (rec.minDrops === null) return { ok: true }; // no parseable floor on the registry → the harvester decides, as today
+  return evaluateCorridorMinimum({
+    corridorId,
+    fx: rec.fx,
+    minDrops: rec.minDrops,
+    quoteAmount: params.quoteAmount,
+  });
 }
 
 export async function dispatchXrplSettlement(params: {
