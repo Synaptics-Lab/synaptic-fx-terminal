@@ -77,19 +77,6 @@ for i in $(seq 1 30); do
   fi
   sleep 1
 done
-kill $SRV 2>/dev/null || true
-wait $SRV 2>/dev/null || true
-# kill on the wrapper doesn't reliably reach the exec'd next-server child
-# (observed live: wrapper died, next-server kept the port). Kill whatever is
-# STILL bound to our port — scoped to the port, never a pkill -f next (the
-# estate runs other next apps under pm2 and a broad pattern would kill them).
-for i in $(seq 1 10); do
-  ss -ltn 2>/dev/null | grep -q ":$PORT " || break
-  PORT_PID=$(ss -ltnp 2>/dev/null | grep ":$PORT " | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
-  [ -n "$PORT_PID" ] && kill "$PORT_PID" 2>/dev/null || true
-  sleep 1
-done
-ss -ltn 2>/dev/null | grep -q ":$PORT " && { echo "port $PORT still bound after cleanup — install FAILED"; exit 1; }
 [ "$UP" = 1 ] || { echo "server never answered tools/list — install FAILED"; exit 1; }
 
 python3 - <<'PY'
@@ -105,6 +92,21 @@ PREFLIGHT_MS=$(curl -fsS "http://127.0.0.1:$PORT/api/enclave/mcp" -H 'content-ty
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"preflight_and_sign","arguments":{"uetr":"333e4587-9b30-4e21-8e7e-3ddffbe7db33","amount":1000,"pair":"USD/KES","debtor":"self-test debtor","creditor":"self-test creditor"}}}' \
   | python3 -c 'import sys,json; d=json.loads(json.load(sys.stdin)["result"]["content"][0]["text"]); assert d.get("passed") is True, d; print(d.get("totalLatencyMs","?"))')
 echo "preflight self-test: PASS (${PREFLIGHT_MS} ms)"
+
+# Checks are done — kill the temp server now. kill on the wrapper doesn't
+# reliably reach the exec'd next-server child (observed live: wrapper died,
+# next-server kept the port). Kill whatever is STILL bound to our port —
+# scoped to the port, never a pkill -f next (the estate runs other next apps
+# under pm2 and a broad pattern would kill them).
+kill $SRV 2>/dev/null || true
+wait $SRV 2>/dev/null || true
+for i in $(seq 1 10); do
+  ss -ltn 2>/dev/null | grep -q ":$PORT " || break
+  PORT_PID=$(ss -ltnp 2>/dev/null | grep ":$PORT " | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
+  [ -n "$PORT_PID" ] && kill "$PORT_PID" 2>/dev/null || true
+  sleep 1
+done
+ss -ltn 2>/dev/null | grep -q ":$PORT " && { echo "port $PORT still bound after cleanup — install FAILED"; exit 1; }
 
 if [ "$SYSTEMD" = 1 ]; then
   UNIT_DIR="$HOME/.config/systemd/user"
