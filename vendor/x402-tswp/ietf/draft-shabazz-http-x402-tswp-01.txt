@@ -1,0 +1,280 @@
+
+
+
+
+Network Working Group                                          T. Rogers
+Internet-Draft                                             Synaptics Lab
+Intended status: Informational                         28 September 2026
+Expires: 1 April 2027
+
+
+          The X402 Typed Settlement Wire Protocol (X402-TSWP)
+                    draft-shabazz-http-x402-tswp-01
+
+Abstract
+
+   This document specifies the X402 Typed Settlement Wire Protocol
+   (X402-TSWP), an application-layer framing extension to HTTP status
+   code 402 (Payment Required).  It defines machine-to-machine
+   challenge-response headers, a typed discriminator registry, and byte-
+   exact multi-rail blockchain settlement grammars.  The protocol is
+   deployed in production with sub-400 ms cross-border finality.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 1 April 2027.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents (https://trustee.ietf.org/
+   license-info) in effect on the date of publication of this document.
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.  Code Components
+   extracted from this document must include Revised BSD License text as
+   described in Section 4.e of the Trust Legal Provisions and are
+   provided without warranty as described in the Revised BSD License.
+
+
+
+Rogers                    Expires 1 April 2027                  [Page 1]
+
+Internet-Draft                  X402-TSWP                 September 2026
+
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . . .   2
+   2.  The X402-TSWP Wire Grammar  . . . . . . . . . . . . . . . . .   2
+   3.  Operational Discriminator Registry  . . . . . . . . . . . . .   2
+   4.  HTTP Header Specifications  . . . . . . . . . . . . . . . . .   3
+     4.1.  Server Challenge (402 Payment Required) . . . . . . . . .   3
+     4.2.  Client Authorization Header . . . . . . . . . . . . . . .   3
+     4.3.  Payment Receipt Header  . . . . . . . . . . . . . . . . .   3
+   5.  Security Considerations . . . . . . . . . . . . . . . . . . .   3
+   6.  IANA Considerations . . . . . . . . . . . . . . . . . . . . .   3
+     6.1.  HTTP Authentication Scheme Registration . . . . . . . . .   4
+     6.2.  Header Field Registration . . . . . . . . . . . . . . . .   4
+     6.3.  ALPN Protocol ID Registration . . . . . . . . . . . . . .   4
+   7.  Normative References  . . . . . . . . . . . . . . . . . . . .   4
+   Appendix A.  Acknowledgements . . . . . . . . . . . . . . . . . .   4
+   Author's Address  . . . . . . . . . . . . . . . . . . . . . . . .   4
+
+1.  Introduction
+
+   [RFC9110] reserves HTTP 402 for future use.  X402-TSWP provides a
+   deterministic, multi-rail settlement protocol with atomic PTB
+   pipelines.
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in BCP
+   14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+2.  The X402-TSWP Wire Grammar
+
+   All payloads are 7-bit ASCII.  Grammar (ABNF [RFC5234]):
+
+   x402-payload   = "X402" type-tag [ ":" sub-type ] ":" payload
+   type-tag       = ALPHA ; Uppercase A-Z
+   sub-type       = ALPHA ; Optional qualifier
+   payload        = 1*128( VCHAR ) ; Printable ASCII
+
+3.  Operational Discriminator Registry
+
+   X402G:<challenge>  Gateway challenge (UUIDv4 [RFC4122]).
+
+   X402L:<lane>:<window>:<nonce>  Concurrent lane execution (ADR-062).
+
+   X402W:<window>:<participant>  Net-settlement wire.
+
+   X402M:<corridor>:<maker>  Margin escrow.
+
+
+
+Rogers                    Expires 1 April 2027                  [Page 2]
+
+Internet-Draft                  X402-TSWP                 September 2026
+
+
+   X402MR:<corridor>:<maker>  Margin return.
+
+   X402N:<session>:<net>  Net readback.
+
+   X402E:<corridor>:<uetr>  ISO 20022 UETR linkage.
+
+   X402B:<session>  Session bonding.
+
+   X402BN:<session>  Bond initiation.
+
+   X402BR:<session>  Bond release.
+
+4.  HTTP Header Specifications
+
+4.1.  Server Challenge (402 Payment Required)
+
+   HTTP/1.1 402 Payment Required
+   WWW-Authenticate: X402-TSWP challenge="827da995-adda-4dd7-
+     9fb5-d05338526873", rails="solana,xrpl", amount="160",
+     unit="drops", recipient="rKmt...",
+     memo-grammar="X402G:<challenge>",
+     expires="1789860818"
+
+4.2.  Client Authorization Header
+
+   GET /mcp/v1/tools/call HTTP/1.1
+   Host: api.synapticchain.xyz
+   Authorization: X402-TSWP rail="solana-devnet",
+     tx="4uQ7T...", type="L",
+     memo="X402L:151:1789860218:806384975"
+
+4.3.  Payment Receipt Header
+
+   HTTP/1.1 200 OK
+   X402-Receipt: rail="solana-devnet",
+     leaf="a161f585...", status="settled"
+
+5.  Security Considerations
+
+   Replay attacks are prevented by one-time UUID challenges and the
+   256-bit sliding window per lane (ADR-062).  Byte-exact verification
+   and constant-time comparison mitigate side-channel and injection
+   attacks.
+
+6.  IANA Considerations
+
+
+
+
+
+
+Rogers                    Expires 1 April 2027                  [Page 3]
+
+Internet-Draft                  X402-TSWP                 September 2026
+
+
+6.1.  HTTP Authentication Scheme Registration
+
+   Register "X402-TSWP" in the HTTP Authentication Scheme Registry.
+
+6.2.  Header Field Registration
+
+   Register "X402-Receipt" as a permanent dictionary field.
+
+6.3.  ALPN Protocol ID Registration
+
+   Register protocol "x402" with ID 0x78 0x34 0x30 0x32 per [RFC7301].
+
+7.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119, March 1997,
+              <https://www.rfc-editor.org/info/rfc2119>.
+
+   [RFC4122]  Leach, P., Mealling, M., and R. Salz, "A Universally
+              Unique Identifier (UUID) URN Namespace", RFC 4122, July
+              2005, <https://www.rfc-editor.org/info/rfc4122>.
+
+   [RFC5234]  Crocker, D., Ed. and P. Overell, "Augmented BNF for Syntax
+              Specifications: ABNF", STD 68, RFC 5234, January 2008,
+              <https://www.rfc-editor.org/info/rfc5234>.
+
+   [RFC7301]  Friedl, S., Popov, A., Langley, A., and E. Stephan,
+              "Transport Layer Security (TLS) Application-Layer Protocol
+              Negotiation Extension", RFC 7301, July 2014,
+              <https://www.rfc-editor.org/info/rfc7301>.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, May 2017,
+              <https://www.rfc-editor.org/info/rfc8174>.
+
+   [RFC9110]  Fielding, R., Ed., Nottingham, M., Ed., and J. Reschke,
+              Ed., "HTTP Semantics", STD 97, RFC 9110, June 2022,
+              <https://www.rfc-editor.org/info/rfc9110>.
+
+Appendix A.  Acknowledgements
+
+   The author thanks the Synaptics Lab team and the FINOS community.
+
+Author's Address
+
+   Trevin Rogers
+   Synaptics Lab
+   Email: veritasvaultone@gmail.com
+
+
+
+Rogers                    Expires 1 April 2027                  [Page 4]
+
+Internet-Draft                  X402-TSWP                 September 2026
+
+
+   URI:   https://github.com/Synaptics-Lab/x402-tswp
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Rogers                    Expires 1 April 2027                  [Page 5]

@@ -1,0 +1,10 @@
+{
+  "name": "@synaptics/x402-tswp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Typed source of truth for the X402 Typed Settlement Wire Protocol (draft-shabazz-http-x402-tswp-01) operational discriminator registry — zero-dependency validator + constructor functions.",
+  "scripts": {
+    "test": "node --test test/vectors.test.mjs"
+  }
+}

@@ -13,7 +13,7 @@
     "@finos/fdc3-get-agent": "^3.0.0-alpha.5",
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.99.0",
-    "@synaptics/x402-tswp": "link:../apps/x402-tswp",
+    "@synaptics/x402-tswp": "file:./vendor/x402-tswp",
     "clsx": "^2.1.1",
     "gsap": "^3.15.0",
     "lucide-react": "^1.45.0",

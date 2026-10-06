@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rfc xmlns:xi="http://www.w3.org/2001/XInclude" version="3" category="info" docName="draft-shabazz-http-x402-tswp-01" ipr="trust200902" xml:lang="en" tocInclude="true" symRefs="true" sortRefs="true">
+  <front>
+    <title abbrev="X402-TSWP">The X402 Typed Settlement Wire Protocol (X402-TSWP)</title>
+    <seriesInfo name="Internet-Draft" value="draft-shabazz-http-x402-tswp-01"/>
+    <author fullname="Trevin Rogers" initials="T." surname="Rogers">
+      <organization>Synaptics Lab</organization>
+      <address>
+        <email>veritasvaultone@gmail.com</email>
+        <uri>https://github.com/Synaptics-Lab/x402-tswp</uri>
+      </address>
+    </author>
+    <date year="2026" month="September" day="28"/>
+    <abstract>
+      <t>This document specifies the X402 Typed Settlement Wire Protocol
+      (X402-TSWP), an application-layer framing extension to HTTP status
+      code 402 (Payment Required).  It defines machine-to-machine
+      challenge-response headers, a typed discriminator registry, and
+      byte-exact multi-rail blockchain settlement grammars.  The protocol
+      is deployed in production with sub-400 ms cross-border finality.</t>
+    </abstract>
+  </front>
+
+  <middle>
+    <section anchor="intro">
+      <name>Introduction</name>
+      <t><xref target="RFC9110"/> reserves HTTP 402 for future use.
+      X402-TSWP provides a deterministic, multi-rail settlement protocol
+      with atomic PTB pipelines.</t>
+      <t>The key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+      "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+      "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to
+      be interpreted as described in BCP 14 <xref target="RFC2119"/>
+      <xref target="RFC8174"/> when, and only when, they appear in all
+      capitals, as shown here.</t>
+    </section>
+
+    <section anchor="grammar">
+      <name>The X402-TSWP Wire Grammar</name>
+      <t>All payloads are 7-bit ASCII.  Grammar
+      (<xref target="RFC5234">ABNF</xref>):</t>
+      <sourcecode type="abnf">
+x402-payload   = "X402" type-tag [ ":" sub-type ] ":" payload
+type-tag       = ALPHA ; Uppercase A-Z
+sub-type       = ALPHA ; Optional qualifier
+payload        = 1*128( VCHAR ) ; Printable ASCII
+      </sourcecode>
+    </section>
+
+    <section anchor="registry">
+      <name>Operational Discriminator Registry</name>
+      <dl>
+        <dt>X402G:&lt;challenge&gt;</dt>
+        <dd><t>Gateway challenge (<xref target="RFC4122">UUIDv4</xref>).</t></dd>
+        <dt>X402L:&lt;lane&gt;:&lt;window&gt;:&lt;nonce&gt;</dt>
+        <dd><t>Concurrent lane execution (ADR-062).</t></dd>
+        <dt>X402W:&lt;window&gt;:&lt;participant&gt;</dt>
+        <dd><t>Net-settlement wire.</t></dd>
+        <dt>X402M:&lt;corridor&gt;:&lt;maker&gt;</dt>
+        <dd><t>Margin escrow.</t></dd>
+        <dt>X402MR:&lt;corridor&gt;:&lt;maker&gt;</dt>
+        <dd><t>Margin return.</t></dd>
+        <dt>X402N:&lt;session&gt;:&lt;net&gt;</dt>
+        <dd><t>Net readback.</t></dd>
+        <dt>X402E:&lt;corridor&gt;:&lt;uetr&gt;</dt>
+        <dd><t>ISO 20022 UETR linkage.</t></dd>
+        <dt>X402B:&lt;session&gt;</dt>
+        <dd><t>Session bonding.</t></dd>
+        <dt>X402BN:&lt;session&gt;</dt>
+        <dd><t>Bond initiation.</t></dd>
+        <dt>X402BR:&lt;session&gt;</dt>
+        <dd><t>Bond release.</t></dd>
+      </dl>
+    </section>
+
+    <section anchor="http_headers">
+      <name>HTTP Header Specifications</name>
+      <section anchor="server_challenge">
+        <name>Server Challenge (402 Payment Required)</name>
+        <sourcecode type="http">
+HTTP/1.1 402 Payment Required
+WWW-Authenticate: X402-TSWP challenge="827da995-adda-4dd7-
+  9fb5-d05338526873", rails="solana,xrpl", amount="160",
+  unit="drops", recipient="rKmt...",
+  memo-grammar="X402G:&lt;challenge&gt;",
+  expires="1789860818"
+        </sourcecode>
+      </section>
+      <section anchor="client_auth">
+        <name>Client Authorization Header</name>
+        <sourcecode type="http">
+GET /mcp/v1/tools/call HTTP/1.1
+Host: api.synapticchain.xyz
+Authorization: X402-TSWP rail="solana-devnet",
+  tx="4uQ7T...", type="L",
+  memo="X402L:151:1789860218:806384975"
+        </sourcecode>
+      </section>
+      <section anchor="receipt_header">
+        <name>Payment Receipt Header</name>
+        <sourcecode type="http">
+HTTP/1.1 200 OK
+X402-Receipt: rail="solana-devnet",
+  leaf="a161f585...", status="settled"
+        </sourcecode>
+      </section>
+    </section>
+
+    <section anchor="security">
+      <name>Security Considerations</name>
+      <t>Replay attacks are prevented by one-time UUID challenges and the
+      256-bit sliding window per lane (ADR-062).  Byte-exact verification
+      and constant-time comparison mitigate side-channel and injection
+      attacks.</t>
+    </section>
+
+    <section anchor="iana">
+      <name>IANA Considerations</name>
+      <section anchor="iana-auth">
+        <name>HTTP Authentication Scheme Registration</name>
+        <t>Register "X402-TSWP" in the HTTP Authentication Scheme
+        Registry.</t>
+      </section>
+      <section anchor="iana-fields">
+        <name>Header Field Registration</name>
+        <t>Register "X402-Receipt" as a permanent dictionary field.</t>
+      </section>
+      <section anchor="iana-alpn">
+        <name>ALPN Protocol ID Registration</name>
+        <t>Register protocol "x402" with ID 0x78 0x34 0x30 0x32 per <xref target="RFC7301"/>.</t>
+      </section>
+    </section>
+  </middle>
+
+  <back>
+    <references>
+      <name>Normative References</name>
+      <reference anchor="RFC2119" target="https://www.rfc-editor.org/info/rfc2119">
+        <front>
+          <title>Key words for use in RFCs to Indicate Requirement Levels</title>
+          <author initials="S." surname="Bradner"/>
+          <date year="1997" month="March"/>
+        </front>
+        <seriesInfo name="BCP" value="14"/>
+        <seriesInfo name="RFC" value="2119"/>
+      </reference>
+      <reference anchor="RFC8174" target="https://www.rfc-editor.org/info/rfc8174">
+        <front>
+          <title>Ambiguity of Uppercase vs Lowercase in RFC 2119 Key Words</title>
+          <author initials="B." surname="Leiba"/>
+          <date year="2017" month="May"/>
+        </front>
+        <seriesInfo name="BCP" value="14"/>
+        <seriesInfo name="RFC" value="8174"/>
+      </reference>
+      <reference anchor="RFC5234" target="https://www.rfc-editor.org/info/rfc5234">
+        <front>
+          <title>Augmented BNF for Syntax Specifications: ABNF</title>
+          <author initials="D." surname="Crocker" role="editor"/>
+          <author initials="P." surname="Overell"/>
+          <date year="2008" month="January"/>
+        </front>
+        <seriesInfo name="STD" value="68"/>
+        <seriesInfo name="RFC" value="5234"/>
+      </reference>
+      <reference anchor="RFC9110" target="https://www.rfc-editor.org/info/rfc9110">
+        <front>
+          <title>HTTP Semantics</title>
+          <author initials="R." surname="Fielding" role="editor"/>
+          <author initials="M." surname="Nottingham" role="editor"/>
+          <author initials="J." surname="Reschke" role="editor"/>
+          <date year="2022" month="June"/>
+        </front>
+        <seriesInfo name="STD" value="97"/>
+        <seriesInfo name="RFC" value="9110"/>
+      </reference>
+      <reference anchor="RFC4122" target="https://www.rfc-editor.org/info/rfc4122">
+        <front>
+          <title>A Universally Unique Identifier (UUID) URN Namespace</title>
+          <author initials="P." surname="Leach"/>
+          <author initials="M." surname="Mealling"/>
+          <author initials="R." surname="Salz"/>
+          <date year="2005" month="July"/>
+        </front>
+        <seriesInfo name="RFC" value="4122"/>
+      </reference>
+      <reference anchor="RFC7301" target="https://www.rfc-editor.org/info/rfc7301">
+        <front>
+          <title>Transport Layer Security (TLS) Application-Layer Protocol Negotiation Extension</title>
+          <author initials="S." surname="Friedl"/>
+          <author initials="A." surname="Popov"/>
+          <author initials="A." surname="Langley"/>
+          <author initials="E." surname="Stephan"/>
+          <date year="2014" month="July"/>
+        </front>
+        <seriesInfo name="RFC" value="7301"/>
+      </reference>
+    </references>
+    <section anchor="acknowledgements">
+      <name>Acknowledgements</name>
+      <t>The author thanks the Synaptics Lab team and the FINOS
+      community.</t>
+    </section>
+  </back>
+</rfc>
