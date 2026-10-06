@@ -7,6 +7,11 @@ import {
   screenSanctionsAccounts,
   nonceEngine,
 } from "@/lib/enclave/adr555-guardian";
+import {
+  importShieldBackup,
+  shieldKeyringStatus,
+  shieldSignXrplPayment,
+} from "@/lib/enclave/shield-keyring";
 
 /**
  * CORS allowlist (S5): the enclave MCP endpoint is consumed cross-origin only
@@ -123,6 +128,41 @@ export async function POST(req: NextRequest) {
                 },
               },
             },
+            {
+              name: "shield_import",
+              description:
+                "ADR-555 custody import for a Sovereign Shield BYOK backup: re-derives all three rails from the seed (fail-closed against any claimed-address mismatch), screens the desk identity through the Gate-2 sanctions Bloom filter, stores the seed in the local 0600 keyring, and returns a pubkey-only attestation signed by the estate enclave key. THE SEED IS NEVER RETURNED.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  backup: { type: "object", description: "The sovereign-shield-byok/v1 backup JSON (contains seed_hex — local loopback only)" },
+                },
+              },
+            },
+            {
+              name: "shield_status",
+              description:
+                "Lists enclave-enrolled Sovereign Shield identities — PUBLIC material only (rails, import timestamps, sanctions result, keyed import attestation). Never emits a seed.",
+              inputSchema: {
+                type: "object",
+                properties: {
+                  identity: { type: "string", description: "Optional syn1 address to scope to one identity" },
+                },
+              },
+            },
+            {
+              name: "shield_sign_xrpl_payment",
+              description:
+                "Signs an XRPL Payment from an enclave-enrolled Shield identity (ADR-555 Step-5 custody): the destination is screened through Gate 2 BEFORE any signature; the keyring seed is used only inside the enclave and the caller receives (tx_blob, hash) only.",
+              inputSchema: {
+                type: "object",
+                required: ["identity", "prepared"],
+                properties: {
+                  identity: { type: "string", description: "The enrolled syn1 desk address" },
+                  prepared: { type: "object", description: "The filled/prepared XRPL Payment JSON (autofill output incl. memos)" },
+                },
+              },
+            },
           ],
         },
       }, { headers: corsHeaders(req) });
@@ -212,6 +252,34 @@ export async function POST(req: NextRequest) {
           result: {
             content: [{ type: "text", text: JSON.stringify(laneAlloc, null, 2) }],
           },
+        }, { headers: corsHeaders(req) });
+      }
+
+      if (toolName === "shield_import") {
+        const backup = args.backup && typeof args.backup === "object" ? args.backup : args;
+        const res = importShieldBackup(backup);
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id,
+          result: { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] },
+        }, { headers: corsHeaders(req) });
+      }
+
+      if (toolName === "shield_status") {
+        const res = shieldKeyringStatus(args.identity ? String(args.identity) : undefined);
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id,
+          result: { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] },
+        }, { headers: corsHeaders(req) });
+      }
+
+      if (toolName === "shield_sign_xrpl_payment") {
+        const res = shieldSignXrplPayment(String(args.identity ?? ""), args.prepared && typeof args.prepared === "object" ? args.prepared : {});
+        return NextResponse.json({
+          jsonrpc: "2.0",
+          id,
+          result: { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] },
         }, { headers: corsHeaders(req) });
       }
 

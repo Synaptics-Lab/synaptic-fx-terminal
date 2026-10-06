@@ -36,9 +36,10 @@ const FACT = {
   creditor: "BankerX Institutional Liquidity Desk",
   debtorAccount: "syn13ln3veevxe99jgdfk6tzfjefazpp35pjty723g",
   creditorAccount: "syn1a4jwmg9ecv6uey2j9s23tzpx807ynshs22m9kf",
+  settler: "" as string, // filled from the key JSON's address field before any use
 };
 
-async function altnetBalance(label) {
+async function altnetBalance(label: string) {
   const resp = await fetch(ALTRPC, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -62,7 +63,7 @@ async function altnetBalance(label) {
   const enclaveHeaders: Record<string, string> = { "Content-Type": "application/json" };
   if (BEARER) enclaveHeaders.authorization = `Bearer ${BEARER}`;
   let failed = 0;
-  const gate = (name, ok, extra = "") => {
+  const gate = (name: string, ok: boolean, extra = "") => {
     console.log(`${ok ? "PASS" : "FAIL"} ${name}${extra ? " — " + extra : ""}`);
     if (!ok) failed += 1;
     return ok;
