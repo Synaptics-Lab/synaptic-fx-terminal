@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { ExternalLink, Search, Activity, CheckCircle2, Clock, AlertTriangle, Key } from "lucide-react";
 import gsap from "gsap";
-import type { FDC3Channel } from "@/lib/connector/solana-finos-bridge";
+import type { FDC3Channel } from "@/lib/connector/pacs008";
 
 export interface BlotterRow {
   id: string;

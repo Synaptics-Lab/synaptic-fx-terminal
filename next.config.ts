@@ -6,8 +6,9 @@ const nextConfig: NextConfig = {
   // build location-dependent and panics ("distDirRoot should not navigate out
   // of the projectPath") anywhere the project isn't under that exact parent —
   // e.g. a sovereign-device install. Removed 2026-10-06 with the vendoring.
-  // Keep Solana web3.js on the server side only (API routes)
-  serverExternalPackages: ["@solana/web3.js", "@solana/spl-token"],
+  // Solana rails are handrolled wire bytes (lib/solana/) — no heavy web3.js
+  // external to declare; serverExternalPackages removed 2026-10-06 (a stale
+  // hashed external reference was crashing POST /api/settle mid-response).
 };
 
 export default nextConfig;

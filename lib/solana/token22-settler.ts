@@ -3,20 +3,16 @@
  * Sends real SPL Token-2022 transferChecked instructions with MemoTransfer extension.
  * The ISO 20022 UETR & MsgId are embedded in the on-chain memo — cryptographically
  * linking the traditional finance message to the DLT settlement.
+ *
+ * Handrolled port (2026-10-06): signs and sends through the estate's own
+ * dependency-free wire stack (lib/solana/handrolled-solana.mjs — legacy tx
+ * bytes, node:crypto ed25519, transport-classified confirm loop, fail-closed
+ * meta.err). Zero @solana/web3.js in the app path (operator ruling). Adds one
+ * net-new gate the web3.js path never had: the DESTINATION token balance
+ * delta is read back from the node — delivered MUST equal the dispatched
+ * base units or ok:false (the desk's delivered-amount law, F-23 family).
  */
 
-import {
-  Connection,
-  PublicKey,
-  Transaction,
-  TransactionInstruction,
-  sendAndConfirmTransaction,
-  Keypair,
-} from "@solana/web3.js";
-import {
-  createTransferCheckedInstruction,
-  getAccount,
-} from "@solana/spl-token";
 import {
   DEVNET_RPC,
   TOKEN_2022_PROGRAM_ID,
@@ -30,6 +26,32 @@ import {
   buildDeskSettlementMemo,
   validateTswpMemo,
 } from "@synaptics/x402-tswp/src/discriminators.mjs";
+import {
+  solanaBlockhash,
+  signSolanaTx,
+  sendAndConfirmSolanaTx,
+  buildTransferCheckedIx,
+  buildMemoV2Ix,
+  tokenAccountAmount,
+  mintDecimals,
+  sigStatus,
+} from "./handrolled-solana.mjs";
+import type { SolanaSigner } from "./settler-key";
+
+// Typed handle on the handrolled confirm path (the .mjs ships JSDoc-free
+// options inference, so the TS layer pins the real resolve shape).
+const sendConfirm = sendAndConfirmSolanaTx as unknown as (
+  base64Tx: string,
+  opts?: {
+    timeoutMs?: number;
+    confirmMs?: number;
+    rebuildTx?: () => Promise<string>;
+  }
+) => Promise<{
+  signature: string;
+  deliveredByAccount: Map<string, number>;
+  slot: number;
+}>;
 
 export {
   DEVNET_RPC,
@@ -44,8 +66,8 @@ export interface Token22SettlementParams {
   uetr: string;
   msgId: string;
   amount: number; // UI Amount (e.g. 2500000.00)
-  fromKeypair: Keypair;
-  destinationAccount?: PublicKey;
+  fromKeypair: SolanaSigner;
+  destinationAccount?: string;
   /**
    * F-9A (attestation↔rail binding): the ADR-555 WOTS+ leaf root's leading
    * hex is embedded in the on-chain memo so the rail tx commits to the exact
@@ -77,21 +99,29 @@ export interface Token22SettlementReceipt {
   balanceReadOk: boolean;
 }
 
-export async function getToken2022Balances(connection: Connection): Promise<{
+/** uiAmountString-equivalent formatting from raw base units (trailing zeros trimmed). */
+function formatUnits(raw: bigint, decimals: number): string {
+  const base = BigInt(10) ** BigInt(decimals);
+  const whole = raw / base;
+  if (decimals === 0) return whole.toString();
+  let frac = (raw % base).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return frac ? `${whole}.${frac}` : whole.toString();
+}
+
+export async function getToken2022Balances(): Promise<{
   debtorBalance: string | null;
   creditorBalance: string | null;
   balanceReadOk: boolean;
 }> {
   try {
-    const debtorInfo = await connection.getTokenAccountBalance(
-      INSTITUTIONAL_ACCOUNTS.debtor.token2022Account
-    );
-    const creditorInfo = await connection.getTokenAccountBalance(
-      INSTITUTIONAL_ACCOUNTS.creditor.token2022Account
-    );
+    const decimals = await mintDecimals(TOKEN_2022_USDS_MINT);
+    const [debtorRaw, creditorRaw] = await Promise.all([
+      tokenAccountAmount(INSTITUTIONAL_ACCOUNTS.debtor.token2022Account),
+      tokenAccountAmount(INSTITUTIONAL_ACCOUNTS.creditor.token2022Account),
+    ]);
     return {
-      debtorBalance: debtorInfo.value.uiAmountString ?? "0",
-      creditorBalance: creditorInfo.value.uiAmountString ?? "0",
+      debtorBalance: formatUnits(debtorRaw, decimals),
+      creditorBalance: formatUnits(creditorRaw, decimals),
       balanceReadOk: true,
     };
   } catch (e) {
@@ -109,7 +139,7 @@ export async function getToken2022Balances(connection: Connection): Promise<{
 export async function dispatchToken22Settlement(
   params: Token22SettlementParams
 ): Promise<Token22SettlementReceipt> {
-  const connection = new Connection(DEVNET_RPC, "confirmed");
+  const authority = params.fromKeypair; // {seed, pubkey}
 
   const sourceAccount = INSTITUTIONAL_ACCOUNTS.debtor.token2022Account;
   const destinationAccount =
@@ -145,90 +175,91 @@ export async function dispatchToken22Settlement(
       `dispatch_refused: settlement memo failed the X402-TSWP SSOT gate (${memoGate.error}) — nothing signed, nothing sent`
     );
   }
-  const memoInstruction = new TransactionInstruction({
-    keys: [{ pubkey: params.fromKeypair.publicKey, isSigner: true, isWritable: false }],
-    programId: MEMO_PROGRAM_ID,
-    data: Buffer.from(memoText, "utf-8"),
+  const memoInstruction = buildMemoV2Ix(memoText, authority.pubkey);
+
+  // 2. Token-2022 TransferChecked instruction (tag 12 + u64LE + decimals).
+  const transferInstruction = buildTransferCheckedIx({
+    source: sourceAccount,
+    mint: TOKEN_2022_USDS_MINT,
+    destination: destinationAccount,
+    authority: authority.pubkey,
+    amount: baseUnits,
+    decimals: TOKEN_2022_DECIMALS,
   });
 
-  // 2. Token-2022 TransferChecked instruction
-  const transferInstruction = createTransferCheckedInstruction(
-    sourceAccount,
-    TOKEN_2022_USDS_MINT,
-    destinationAccount,
-    params.fromKeypair.publicKey,
-    baseUnits,
-    TOKEN_2022_DECIMALS,
-    [],
-    TOKEN_2022_PROGRAM_ID
-  );
+  // Pre-destination read for the delivered gate: fail loud (an unreadable
+  // source/destination means the signed transfer would also be unreadable).
+  const decimals = await mintDecimals(TOKEN_2022_USDS_MINT);
+  const destPre = await tokenAccountAmount(destinationAccount);
 
-  const transaction = new Transaction().add(memoInstruction, transferInstruction);
+  const build = (blockhash: string): string =>
+    signSolanaTx({
+      payer: authority,
+      blockhash,
+      instructions: [memoInstruction, transferInstruction],
+      extraSigners: [],
+    });
 
-  const txSignature = await sendAndConfirmTransaction(
-    connection,
-    transaction,
-    [params.fromKeypair],
-    { commitment: "confirmed" }
-  );
+  const sent = await sendConfirm(await build(await solanaBlockhash()), {
+    // Blockhash-expiry refusals retry against a FRESH blockhash — re-fetch +
+    // re-sign the same payload; a refused send never hit the chain and an
+    // identical tx dedupes by signature, so zero double-send risk.
+    rebuildTx: async () => build(await solanaBlockhash()),
+  });
+  // sent has fail-closed on meta.err already (readTxMeta law).
 
   // Receipt from an ACTUAL node readback (F-23 fix): no literal
-  // ok:true/ confirmationStatus / fresh-slot fabrication. If the node cannot
-  // confirm the signature, ok:false with status "unknown" — the caller refuses.
-  const statuses = await connection.getSignatureStatuses([txSignature], {
-    searchTransactionHistory: false,
-  });
-  const st = statuses?.value?.[0] ?? null;
-  if (!st) {
-    console.error("[token22-settler] signature status readback returned null for", txSignature);
-    return {
-      ok: false,
-      txSignature,
-      slot: 0,
-      confirmationStatus: "unknown",
-      explorerUrl: `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`,
-      amount: params.amount,
-      uetr: params.uetr,
-      msgId: params.msgId,
-      mint: TOKEN_2022_USDS_MINT.toBase58(),
-      sourceAccount: sourceAccount.toBase58(),
-      destinationAccount: destinationAccount.toBase58(),
-      memoProgram: MEMO_PROGRAM_ID.toBase58(),
-      token2022Program: TOKEN_2022_PROGRAM_ID.toBase58(),
-      memoText,
-      timestamp: new Date().toISOString(),
-      postDebtorBalance: null,
-      postCreditorBalance: null,
-      balanceReadOk: false,
-    };
-  }
+  // ok:true/confirmationStatus fabrication. If the node cannot confirm the
+  // signature, ok:false with status "unknown" — the caller refuses.
+  const st = await sigStatus(sent.signature);
   const confirmationStatus =
-    st.confirmationStatus === "finalized"
+    st?.confirmationStatus === "finalized"
       ? "finalized"
-      : st.confirmationStatus === "confirmed"
+      : st?.confirmationStatus === "confirmed"
       ? "confirmed"
-      : st.confirmationStatus === "processed"
+      : st?.confirmationStatus === "processed"
       ? "processed"
       : "unknown";
-  const slot = st.slot ?? 0;
+  const slot = st?.slot ?? 0;
 
-  // Retrieve post-settlement balances (null + balanceReadOk:false on failure)
-  const balances = await getToken2022Balances(connection);
+  // Delivered gate: the destination token delta must equal the dispatched
+  // base units (the desk's delivered-amount law on the Token-2022 rail).
+  let destinationDeltaOk: boolean;
+  let balances: Awaited<ReturnType<typeof getToken2022Balances>>;
+  try {
+    const destPost = await tokenAccountAmount(destinationAccount);
+    destinationDeltaOk = (destPost - destPre) === baseUnits;
+    if (!destinationDeltaOk) {
+      console.error(
+        `[token22-settler] delivered mismatch: destination delta ${destPost - destPre} vs dispatched ${baseUnits} (UETR ${params.uetr})`
+      );
+    }
+    balances = await getToken2022Balances();
+  } catch (e) {
+    console.error("[token22-settler] delivered/balance readback failed:", e instanceof Error ? e.message : e);
+    destinationDeltaOk = false;
+    balances = { debtorBalance: null, creditorBalance: null, balanceReadOk: false };
+  }
 
   return {
-    ok: confirmationStatus === "confirmed" || confirmationStatus === "finalized",
-    txSignature,
+    // Delivered law folded into `ok` (F-23 family): confirmed on the node AND
+    // destination token delta == dispatched base units — anything else is
+    // ok:false and the caller refuses.
+    ok:
+      (confirmationStatus === "confirmed" || confirmationStatus === "finalized") &&
+      destinationDeltaOk,
+    txSignature: sent.signature,
     slot,
     confirmationStatus,
-    explorerUrl: `https://explorer.solana.com/tx/${txSignature}?cluster=devnet`,
+    explorerUrl: `https://explorer.solana.com/tx/${sent.signature}?cluster=devnet`,
     amount: params.amount,
     uetr: params.uetr,
     msgId: params.msgId,
-    mint: TOKEN_2022_USDS_MINT.toBase58(),
-    sourceAccount: sourceAccount.toBase58(),
-    destinationAccount: destinationAccount.toBase58(),
-    memoProgram: MEMO_PROGRAM_ID.toBase58(),
-    token2022Program: TOKEN_2022_PROGRAM_ID.toBase58(),
+    mint: TOKEN_2022_USDS_MINT,
+    sourceAccount,
+    destinationAccount,
+    memoProgram: MEMO_PROGRAM_ID,
+    token2022Program: TOKEN_2022_PROGRAM_ID,
     memoText,
     timestamp: new Date().toISOString(),
     postDebtorBalance: balances.debtorBalance,

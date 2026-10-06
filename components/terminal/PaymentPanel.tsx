@@ -12,7 +12,7 @@ import {
   buildInstitutionalPacs008,
   validateCBPRPlus,
   type FDC3Channel,
-} from "@/lib/connector/solana-finos-bridge";
+} from "@/lib/connector/pacs008"; // client-safe split (2026-10-06)
 import { InstitutionalSelect } from "@/components/ui/Select";
 import { ConfirmationDialog } from "@/components/ui/Dialog";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -51,7 +51,7 @@ async function loadDeskIdentities(): Promise<DeskIdentity[]> {
   if (deskIdentitiesCache) return deskIdentitiesCache;
   const r = await fetch("/api/identity/desks");
   if (!r.ok) throw new Error(`desk identities unavailable (HTTP ${r.status})`);
-  const j = await r.json();
+  const j = (await readJsonOrExplain(r)) as { ok?: boolean; desks?: DeskIdentity[] };
   if (!j?.ok || !Array.isArray(j.desks) || !j.desks.length) {
     throw new Error("desk identities unavailable (malformed response)");
   }
@@ -166,6 +166,24 @@ interface PaymentPanelProps {
 const L1_POLL_INTERVAL_MS = 4000;
 const L1_POLL_MAX_POLLS = 20; // ~80s of relayer patience, then the row keeps its honest "pending" state
 
+// Every fetch here parses the body through this guard (2026-10-06): a route
+// that dies MID-RESPONSE (e.g. the stale @solana/web3.js external-module
+// crash) leaves an empty body, and a raw `resp.json()` on it throws the
+// opaque "Unexpected end of JSON output" instead of naming the real failure.
+// This says HTTP + status + the first bytes verbatim.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- settle payloads are heterogeneous; the guarded parse is the point
+async function readJsonOrExplain(resp: Response): Promise<any> {
+  const text = await resp.text();
+  if (!text.trim()) {
+    throw new Error(`settlement endpoint returned HTTP ${resp.status} with an empty response body (route crashed mid-response — see server logs)`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`settlement endpoint returned HTTP ${resp.status} with a non-JSON body: ${text.slice(0, 100)}`);
+  }
+}
+
 interface L1Anchor {
   checkpointHeight: number;
   synTxHash: string;
@@ -177,7 +195,7 @@ async function pollL1Anchor(hash: string): Promise<L1Anchor | null> {
     await new Promise((resolve) => setTimeout(resolve, poll === 0 ? 2000 : L1_POLL_INTERVAL_MS));
     try {
       const resp = await fetch(`/api/settle/l1?hash=${encodeURIComponent(hash)}`);
-      const data = await resp.json();
+      const data = await readJsonOrExplain(resp);
       if (data && data.recorded) return data as L1Anchor;
     } catch {
       // Relay lag or a transient RPC refusal — keep polling; absence stays honest.
@@ -441,7 +459,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
               },
             }),
           });
-          const vJson = await vResp.json();
+          const vJson = await readJsonOrExplain(vResp);
           const vText = vJson?.result?.content?.find?.((c: any) => c.type === "text")?.text;
           let vReport: { verified?: boolean } | null = null;
           try {
@@ -588,7 +606,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       try {
         const res = await fetch("/api/fdc3/intent");
         if (!res.ok) return;
-        const data = await res.json();
+        const data = await readJsonOrExplain(res);
         if (data && data.timestamp > lastSeenIntentTs && isPaymentContext(data.context)) {
           lastSeenIntentTs = data.timestamp;
           handleInboundPayment(data.context);
@@ -732,7 +750,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
           enclaveAttestation,
         }),
       });
-      const data = await resp.json();
+      const data = await readJsonOrExplain(resp);
 
       if (data.error && !data.txSignature && !data.xrplTxHash) {
         // 422/4xx gate refusals carry a "detail" — surface it verbatim.
