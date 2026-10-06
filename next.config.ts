@@ -1,13 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Turbopack workspace root. The desk links the canonical SSOT package
-  // (@synaptics/x402-tswp → ../apps/x402-tswp), and Turbopack refuses module
-  // resolution outside the project root unless `root` names the common parent
-  // of the project and the linked dependency (nextjs docs: turbopack.md —
-  // "Files outside of the project root are not resolved"). Absolute path so
-  // the setting is explicit rather than lockfile-inferred.
-  turbopack: { root: "/opt/synapticchain" },
+  // No turbopack:root — the repo is fully self-contained (all deps vendored,
+  // nothing linked outside the project root). An absolute root here makes the
+  // build location-dependent and panics ("distDirRoot should not navigate out
+  // of the projectPath") anywhere the project isn't under that exact parent —
+  // e.g. a sovereign-device install. Removed 2026-10-06 with the vendoring.
   // Keep Solana web3.js on the server side only (API routes)
   serverExternalPackages: ["@solana/web3.js", "@solana/spl-token"],
 };
