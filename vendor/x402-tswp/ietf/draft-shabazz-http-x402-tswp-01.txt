@@ -126,6 +126,13 @@ Internet-Draft                  X402-TSWP                 September 2026
 
    X402BR:<session>  Bond release.
 
+   X402A:<asset>:<mint>:<decimals>  Asset binding — issuer-agnostic
+      instrument identification; binds the settlement asset symbol to its
+      on-chain token mint identifier (base58, exactly 32 bytes) and wire
+      decimals (0..255, enforced by SPL Token-2022 "transfer_checked").
+      Inaugural registration: OUSD (Open Standard; Token-2022 mainnet mint
+      ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB, decimals 6).
+
 4.  HTTP Header Specifications
 
 4.1.  Server Challenge (402 Payment Required)

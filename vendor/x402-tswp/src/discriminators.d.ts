@@ -14,7 +14,7 @@ export interface TswpRegistryEntry {
 
 export interface TswpValidation {
   valid: boolean;
-  /** Registry key ('' | 'G' | 'L' | 'W' | 'M' | 'MR' | 'N' | 'E' | 'B' | 'BN' | 'BR' | 'Z' | 'R' | 'P') */
+  /** Registry key ('' | 'G' | 'L' | 'W' | 'M' | 'MR' | 'N' | 'E' | 'B' | 'BN' | 'BR' | 'Z' | 'R' | 'P' | 'A') */
   tag: string | null;
   /** Second qualifier letter for compound tags ('MR' -> 'R'), else '' */
   subtype: string;
@@ -58,3 +58,8 @@ export declare function buildDeskSettlementMemo(
 ): string;
 
 export declare function buildCorridorAttestationMemo(corridor: string, uetr: string, atsRoot: string): string;
+
+// Asset-binding carrier (SEP-0001 asset registry): issuer-agnostic instrument
+// binding — asset symbol, on-chain mint pubkey (base58, exactly 32 bytes), u8
+// wire decimals. Inaugural registration: OUSD (Open Standard), mainnet mint.
+export declare function buildAssetBindingMemo(asset: string, mint: string, decimals: number | string): string;

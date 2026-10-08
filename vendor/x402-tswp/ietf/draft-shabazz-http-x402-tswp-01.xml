@@ -70,6 +70,13 @@ payload        = 1*128( VCHAR ) ; Printable ASCII
         <dd><t>Bond initiation.</t></dd>
         <dt>X402BR:&lt;session&gt;</dt>
         <dd><t>Bond release.</t></dd>
+        <dt>X402A:&lt;asset&gt;:&lt;mint&gt;:&lt;decimals&gt;</dt>
+        <dd><t>Asset binding — issuer-agnostic instrument identification; binds
+        the settlement asset symbol to its on-chain token mint identifier
+        (base58, exactly 32 bytes) and wire decimals (0..255, enforced by SPL
+        Token-2022 "transfer_checked"). Inaugural registration: OUSD (Open
+        Standard; Token-2022 mainnet mint
+        ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB, decimals 6).</t></dd>
       </dl>
     </section>
 

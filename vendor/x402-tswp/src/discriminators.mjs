@@ -116,6 +116,39 @@ function isProofToken(s) {
   return s.length >= 8;
 }
 
+// Asset-binding tags (X402A) name the instrument a settlement moves. Asset
+// symbols: uppercase alnum 2–16, letter-led (OUSD, cTZS, SOL).
+const ASSET_RE = /^[A-Z][A-Z0-9]{1,15}$/;
+
+// Base58 (Bitcoin alphabet) decode — zero-dependency, mirrors the composition
+// authority's `assertBase58Key` semantics: exactly 32 bytes when decoded, so a
+// mint identifier is a real Solana pubkey (base58 length alone is not enough;
+// all-'1s' decodes to leading zeros and is refused the same way).
+const B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+function b58Decode32(s) {
+  if (typeof s !== 'string' || s.length < 32 || s.length > 44) return null;
+  let bytes = [0];
+  for (let i = 0; i < s.length; i++) {
+    const val = B58_ALPHABET.indexOf(s[i]);
+    if (val < 0) return null;
+    for (let j = bytes.length - 1; j >= 0; j--) {
+      const t = bytes[j] * 58 + val;
+      bytes[j] = t & 0xff;
+      const carry = t >> 8;
+      if (!j && carry) bytes.unshift(carry);
+    }
+  }
+  let z = 0;
+  while (z < s.length && s[z] === '1') z++;
+  if (z) bytes = new Array(z).concat(bytes);
+  if (bytes.length !== 32) return null;
+  return bytes;
+}
+
+function isMint(s) {
+  return b58Decode32(s) !== null;
+}
+
 // Per-tag segment validators. Field order is normative from draft §4 + the
 // estate matrix. Segments arrive split on ':' — the caller strips framing.
 // X402W/X402N field 1 is decimal: window epoch (legacy) or numeric session id
@@ -157,6 +190,15 @@ const TAG_VALIDATORS = {
         && UUID_V4_RE.test(seg[0]) && isMsgId(seg[1]) && isDecimalField(seg[2])
         && isTsaBps(seg[3])
         && (seg.length === 4 || ATS_ROOT_RE.test(seg[4])),
+  // A (SEP-0001 asset binding, x402-tswp repo): binds the settlement asset
+  // symbol to its on-chain token mint identifier + wire decimals — the memo
+  // witnesses WHICH instrument moved, issuer-agnostic by construction
+  // (inaugural registration: OUSD / Open Standard, mainnet Token-2022 mint
+  // ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB, decimals 6, RPC-verified
+  // 2026-10-07). Mint must decode to exactly 32 bytes (assertBase58Key
+  // parity); decimals are the u8 wire decimals transfer_checked enforces.
+  'A': (seg) => seg.length === 3 && ASSET_RE.test(seg[0]) && isMint(seg[1])
+        && isDecimalField(seg[2]) && Number(seg[2]) <= 255,
 };
 
 // W: decimal window-or-session (no leading zeros, R16 numeric session ids fit) + syn address.
@@ -253,6 +295,12 @@ const DISCRIMINATOR_REGISTRY = {
     service: 'synaptic-fx-terminal desk settler (UTA-2026-10-03-001-F-19 SSOT convergence)',
     rails: ['solana-devnet'],
     description: 'desk pacs.008 settlement — FI-to-FI Token-2022 transfer bound to its SWIFT gpi UETR, message id, transferred minor units, TSA levy (bps), optional ADR-555 attestation-root lead-16',
+  },
+  'A': {
+    syntax: 'X402A:<asset>:<mint>:<decimals>', tag: 'A', status: 'STANDARDS_TRACK',
+    service: 'x402-tswp asset registry (SEP-0001) / ptb-controller (:8416) / synaptic-fx-terminal',
+    rails: ['solana-devnet', 'synaptic-l1'],
+    description: 'issuer-agnostic asset binding — binds the settlement asset symbol to its on-chain token mint identifier + wire decimals so the memo witnesses WHICH instrument moved; inaugural registration: OUSD (Open Standard, mainnet Token-2022 mint ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB, decimals 6, RPC-verified 2026-10-07). External issuance on mainnet — devnet executors honestly refuse OUSD-class legs rather than fake a settlement',
   },
 };
 
@@ -396,5 +444,17 @@ export const buildDeskSettlementMemo = (uetr, msgId, minorAmount, tsaBps, atsRoo
 export const buildCorridorAttestationMemo = (corridor, uetr, atsRoot) =>
   build('', [corridor, uuidOr(uetr, 'uetr'), 'ATS',
     (() => { const s = String(atsRoot).toLowerCase(); if (!ATS_ROOT_RE.test(s)) throw new Error('tswp_build_failed_not_attestation_root:atsRoot'); return s; })()]);
+
+// Asset binding (SEP-0001): the ONLY sanctioned way to emit the issuer-agnostic
+// instrument binding. asset = uppercase alnum 2–16 letter-led; mint = Solana
+// pubkey (base58, exactly 32 bytes); decimals = u8 wire decimals (0..255,
+// transfer_checked-enforced). Inaugural registration, OUSD (Open Standard):
+//   X402A:OUSD:ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB:6
+export const buildAssetBindingMemo = (asset, mint, decimals) =>
+  build('A', [
+    (() => { const s = String(asset); if (!ASSET_RE.test(s)) throw new Error('tswp_build_failed_not_asset_symbol:asset'); return s; })(),
+    (() => { const m = String(mint); if (b58Decode32(m) === null) throw new Error('tswp_build_failed_not_base58_pubkey:mint'); return m; })(),
+    (() => { const s = String(decimals); if (!isDecimalField(s) || Number(s) > 255) throw new Error('tswp_build_failed_not_wire_decimals:decimals'); return s; })(),
+  ]);
 
 export { DISCRIMINATOR_REGISTRY };
