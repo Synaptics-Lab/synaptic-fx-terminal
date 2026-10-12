@@ -59,6 +59,12 @@ For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
 
 ---
 
+### Peer-reviewed white papers (in this repository)
+
+- [FINOS FDC3 PR #2204 — the switch was flipped](FINOS_FDC3_PR2204_THE_SWITCH_WAS_FLIPPED.pdf) — the ISO 20022 payment-intent merge inside Linux Foundation FINOS FDC3 (3 pages, October 2026).
+- [SynapticChain & BankerX — Sovereign Settlement Stack: complete architectural deep dive](SYNAPTICCHAIN_BANKERX_COMPLETE_ARCHITECTURE_DEEP_DIVE.pdf) — from the L1 Rust kernel to the card rail (3 pages, October 2026; 23-crate stack, 3,347 Rust tests).
+- [FX settlement architecture comparison](FX_Settlement_Architecture_Comparison.png) — reference diagram.
+
 ## Verified Live Telemetry
 
 | Metric | Value | Source |
