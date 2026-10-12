@@ -14,7 +14,7 @@
 
 ---
 
-## 🖥️ Live Entry — Colosseum Radar Submission
+## Live Entry — Colosseum Radar Submission
 
 Everything in this repository runs live at **[colosseum.synapticchain.xyz](https://colosseum.synapticchain.xyz)**:
 
