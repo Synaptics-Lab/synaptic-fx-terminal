@@ -83,8 +83,20 @@ export default function TerminalPage() {
           </div>
         </div>
 
-        {/* Right: Briefing Trigger, Telemetry & Live Clock */}
+        {/* Right: Colosseum Beacon, Briefing Trigger, Telemetry & Live Clock */}
         <div className="flex items-center gap-3 text-zinc-400">
+          <a
+            href="https://colosseum.synapticchain.xyz"
+            target="_blank"
+            rel="noreferrer"
+            className="colo-beacon flex items-center gap-1 text-[9px] font-bold tracking-widest uppercase text-amber-300 bg-[#161616] hover:bg-[#1f1f1f] border border-amber-500/40 hover:border-amber-400 px-2 py-0.5 transition-colors cursor-pointer"
+            title="Live ledger — SynapticChain clearinghouse Colosseum submission"
+          >
+            <Terminal className="w-3 h-3 text-amber-400" />
+            <span>COLOSSEUM</span>
+            <ExternalLink className="w-2.5 h-2.5 text-amber-500/60" />
+          </a>
+
           <button
             onClick={() => setShowIntroModal(true)}
             className="flex items-center gap-1 text-[9px] text-zinc-300 hover:text-amber-300 bg-[#161616] hover:bg-[#1f1f1f] border border-[#2c2c2c] px-2 py-0.5 transition-colors cursor-pointer"

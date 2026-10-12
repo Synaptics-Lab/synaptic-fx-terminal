@@ -11,6 +11,18 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Colosseum cross-link — slow yellow beacon */
+@keyframes coloBeacon {
+  0%, 100% { opacity: .45; }
+  50%      { opacity: 1; }
+}
+.colo-beacon {
+  animation: coloBeacon 2.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .colo-beacon { animation: none; opacity: 1; }
+}
+
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
