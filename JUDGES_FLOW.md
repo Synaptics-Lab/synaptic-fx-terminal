@@ -99,6 +99,6 @@ Rather than settling gross bilateral escrows for every micro-transaction, high-f
 
 ---
 
-## ‍Founders
+## Founders
 * **Dr. Abdul Shabazz** (System Architecture, Distributed Systems Math, Formal Verification)
 * **Free Shabazz** (Cryptography, L1 State Machines, Multi-Rail Relayers)
