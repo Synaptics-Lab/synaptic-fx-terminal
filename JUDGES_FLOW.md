@@ -9,11 +9,11 @@
 
 ---
 
-## ⚡ The 30-Second Judge Fast-Path (No Docker, Zero Gas Needed)
+## The 30-Second Judge Fast-Path (No Docker, Zero Gas Needed)
 
 As a Colosseum judge or evaluator, you can verify our entire cross-rail settlement stack in under 30 seconds using standard shell commands.
 
-### ① Step 1: Zero-Config Auto-Onboard (Keyless Multi-Chain Identity)
+### Step 1: Zero-Config Auto-Onboard (Keyless Multi-Chain Identity)
 Spawn a fully functional institutional agent identity across **Solana DEVNET**, **XRPL ALTNET**, and **Synaptic L1** with pre-funded starter capital:
 
 ```bash
@@ -33,7 +33,7 @@ curl -s -X POST https://nodes.synapticchain.xyz/api/onboard \
 
 ---
 
-### ② Step 2: Test the Sub-1.5ms Enclave Refusal Gate (Zero Drain)
+### Step 2: Test the Sub-1.5ms Enclave Refusal Gate (Zero Drain)
 Unlike centralized agent wrappers that leak API keys or burn gas on bad requests, BankerX uses a local **ADR-555 Secure Enclave** with SIMD Bloom filtering. Test an illicit or sanctioned counterparty spend:
 
 ```bash
@@ -52,7 +52,7 @@ curl -s -X POST https://terminal.synapticchain.xyz/api/settle \
 
 ---
 
-### ③ Step 3: Verify the Spending Boundary & Permit Model
+### Step 3: Verify the Spending Boundary & Permit Model
 Solve the classic agent dilemma: *How do you let an autonomous bot spend without draining the founder's wallet?*
 
 Our local enclave implements **In-Band Spend Permits** and hard single-transaction ceilings:
@@ -61,7 +61,7 @@ Our local enclave implements **In-Band Spend Permits** and hard single-transacti
 
 ---
 
-### ④ Step 4: Verify Live Solana Token-2022 Settlement with RequiredMemo
+### Step 4: Verify Live Solana Token-2022 Settlement with RequiredMemo
 View live on-chain Delivery-versus-Payment (DvP) settlements on Solana Devnet:
 * **Token-2022 Mint (OUSD):** `2ANrmtAcMd8eihFGvbyAkrAWveq8nU6uMTigbWBuigNe`
 * **Consensus Covenant:** Employs `spl-token-2022` with `RequiredMemoTransfers`. Every transfer MUST embed an RFC 4122 UUIDv4 SWIFT UETR inside an SPL Memo v2 instruction in the same atomic transaction, or Solana consensus aborts the block.
@@ -69,14 +69,14 @@ View live on-chain Delivery-versus-Payment (DvP) settlements on Solana Devnet:
 
 ---
 
-### ⑤ Step 5: Continuous Atomic Netting (CAN) Stream
+### Step 5: Continuous Atomic Netting (CAN) Stream
 Rather than settling gross bilateral escrows for every micro-transaction, high-frequency bot traffic nets continuously at Solana's slot cadence:
 * **Live Netting Firehose:** [https://colosseum.synapticchain.xyz/can](https://colosseum.synapticchain.xyz/can)
 * **Status Telemetry:** [https://colosseum.synapticchain.xyz/api/can_status](https://colosseum.synapticchain.xyz/api/can_status)
 
 ---
 
-## 🏛️ Institutional Proofs & Peer-Verifiable Artifacts
+## Institutional Proofs & Peer-Verifiable Artifacts
 
 | Milestone / Standard | Authority / Repository | Proof Status |
 |---|---|---|
@@ -89,7 +89,7 @@ Rather than settling gross bilateral escrows for every micro-transaction, high-f
 
 ---
 
-## 🔍 Codebase Navigation
+## Codebase Navigation
 
 * **Enclave & Spending Limits:** [`nodes-api/local_enclave_mcp.py`](file:///Users/abdulhome/Downloads/Synaptic-Source-master/nodes-api/local_enclave_mcp.py)
 * **Autonomous Agent Harness:** [`apps/bankerX/agent/harness.mjs`](file:///Users/abdulhome/Downloads/Synaptic-Source-master/apps/bankerX/agent/harness.mjs)
@@ -99,6 +99,6 @@ Rather than settling gross bilateral escrows for every micro-transaction, high-f
 
 ---
 
-## 👨‍💻 Founders
+## ‍Founders
 * **Dr. Abdul Shabazz** (System Architecture, Distributed Systems Math, Formal Verification)
 * **Free Shabazz** (Cryptography, L1 State Machines, Multi-Rail Relayers)
