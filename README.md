@@ -75,10 +75,10 @@ For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
 
 **BankerX** is the back-office settlement terminal in the **Synaptic FX Terminal** suite. It pairs with [FINOS TraderX](https://github.com/finos/traderX) via FDC3 3.0 Desktop Agent Bridging — a dealer raises a `StartPayment` intent (FDC3 PR #2204, merged in `finos/FDC3:main`) in the trading blotter, and BankerX atomically executes it across three independent rails simultaneously.
 
-> 🏆 **Colosseum Hackathon Judges:** See [`JUDGES_FLOW.md`](JUDGES_FLOW.md) for the 30-second fast path, live Token-2022 proof, and keyless enclave verification.  
-> 🎬 **Watch Live Demos:** [90-Second Technical Demo](https://youtu.be/ZMCEc2Jge4c) · [3-Minute Pitch Video](https://youtu.be/o92UFXH7dI4)  
+> **Colosseum Hackathon Judges:** See [`JUDGES_FLOW.md`](JUDGES_FLOW.md) for the 30-second fast path, live Token-2022 proof, and keyless enclave verification.  
+> **Watch Live Demos:** [90-Second Technical Demo](https://youtu.be/ZMCEc2Jge4c) · [3-Minute Pitch Video](https://youtu.be/o92UFXH7dI4)  
 > ⚡ **For Autonomous AI Agents:** See [`SKILL.md`](SKILL.md) for 10-second zero-cost auto-onboarding, keyless settlement, and 400ms continuous netting streams.  
-> 🖥️ **Live TraderX Blotter:** Test live desktop integration at [https://traderx.synapticchain.xyz/angular/](https://traderx.synapticchain.xyz/angular/).
+> **Live TraderX Blotter:** Test live desktop integration at [https://traderx.synapticchain.xyz/angular/](https://traderx.synapticchain.xyz/angular/).
 
 **No bridge. No wrapped asset. Three rails settle the same instruction atomically or none settle.**
 
