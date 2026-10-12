@@ -58,18 +58,17 @@ export function IntroModal({ isOpen, onClose }: IntroModalProps) {
               <span>What You Are Looking At</span>
             </div>
             <p className="text-zinc-400 text-[10.5px]">
-              <strong>BankerX</strong> is the settlement side of the Colosseum Radar submission:
-              a post-trade DvP clearinghouse that executes the FINOS FDC3 3.0 <code className="text-amber-300">StartPayment</code> intent (upstream PR #2204, merged). Front-office platforms capture orders; this terminal clears and settles them against real rails with ISO 20022 <code className="text-zinc-300">pacs.008</code> initiation and <code className="text-zinc-300">pacs.002</code> receipts.
+              <strong>BankerX</strong> is the settlement side of this Colosseum Radar submission: a post-trade DvP clearinghouse executing the FINOS FDC3 3.0 <code className="text-amber-300">StartPayment</code> intent. <strong>TraderX</strong> is the front office that captures orders; this terminal is the desk that clears them against real rails under ISO 20022 <code className="text-zinc-300">pacs.008</code> initiation and <code className="text-zinc-300">pacs.002</code> receipts.
             </p>
           </div>
 
           {/* Judge fast path — where to click */}
           <div className="bg-[#111] border border-[#222] p-3 space-y-2">
             <span className="text-[9.5px] uppercase tracking-wider text-zinc-500 font-bold">
-              Start Here — Open the Blotter to This Desk
+              Judge Flow — Open the Blotter
             </span>
             <p className="text-zinc-400 text-[10.5px]">
-              The front office runs on <strong>TraderX</strong>: open the live blotter at{" "}
+              Open the <strong>TraderX</strong> blotter at{" "}
               <a
                 href="https://traderx.synapticchain.xyz/angular/"
                 target="_blank"
@@ -77,8 +76,11 @@ export function IntroModal({ isOpen, onClose }: IntroModalProps) {
                 className="text-amber-300 underline decoration-amber-500/40 hover:text-amber-200"
               >
                 traderx.synapticchain.xyz/angular/
-              </a>
-              , place a trade, and click <em>Settle</em>. That click dispatches the FDC3 <code className="text-zinc-300">StartPayment</code> intent carrying the UETR — it lands in this terminal, runs the enclave pre-flight, and returns the on-chain receipt into the blotter below.
+              </a>{" "}
+              — that blotter is wired to this desk. Place a trade and click <em>Settle</em>: the FDC3 <code className="text-zinc-300">StartPayment</code> intent carrying the SWIFT UETR lands here, runs the enclave pre-flight, initiates <code className="text-zinc-300">pacs.008</code> settlement, and returns the <code className="text-zinc-300">pacs.002</code> receipt into the blotter below.
+            </p>
+            <p className="text-[10.5px] text-zinc-300 border border-amber-700/50 bg-amber-950/20 p-2">
+              The desk processes exactly <strong>one</strong> settlement — a live single transaction, kept minimal and safe to run. Every trade mints a fresh SWIFT UETR, and a settled UETR is never executed twice: resubmitting the same UETR is <strong>refused by design</strong>. That refusal is the product — replay and double-settlement protection.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px]">
               <a
@@ -110,7 +112,7 @@ export function IntroModal({ isOpen, onClose }: IntroModalProps) {
                 <span>Tier 1: Front Office</span>
               </div>
               <p className="text-[10px] text-zinc-400">
-                The TraderX blotter executes spot trades with zero ledger dependencies. Clicking <em>Settle</em> dispatches a standard FDC3 <code className="text-zinc-300">StartPayment</code> intent carrying pure trade parameters and an RFC 4122 SWIFT UETR.
+                TraderX executes spot trades with zero ledger dependencies — no value moves here. It captures orders and emits pure trade parameters with an RFC 4122 SWIFT UETR to the settlement desk.
               </p>
             </div>
 
