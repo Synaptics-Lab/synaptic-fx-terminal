@@ -76,6 +76,31 @@ Rather than settling gross bilateral escrows for every micro-transaction, high-f
 
 ---
 
+### Step 6: Render the Outbound SWIFT Wire Document (pacs.008.001.08)
+Every settled UETR produces two artifacts: the chain `pacs.002` receipt and the **outbound CBPR+ `pacs.008.001.08` wire document** a SWIFT-lane counterparty would ingest. In the terminal (https://terminal.synapticchain.xyz), the "CBPR+ Outbound Wire" inspector tab renders this document next to the pacs.002 receipt. You can build the same document from your own shell — the serializer on the bridge is pure compute: no session, no chain writes, no money, no second settlement.
+
+First, observe the honesty path — submit a context with no bank-side identifiers:
+
+```bash
+curl -s -X POST https://finos.synapticchain.xyz/bridge/fdc3/pacs008 \
+  -H "Content-Type: application/json" \
+  -d '{"context":{"uetr":"11111111-2222-4333-8444-555555555555","amount":"25.00","currency":"USD","debtor":{"name":"Corporate Treasury Desk","account":"ACCT-DBTR-01"},"creditor":{"name":"Institutional Liquidity Desk","account":"ACCT-CDTR-01"}}}'
+```
+
+**Result:** HTTP 422 with named refusals — `instg_bicfi_missing`, `dbtrAgt_bicfi_missing`, `cdtrAgt_bicfi_missing`, plus the country check. The response states explicitly: *bank-side identifiers are caller-supplied — never fabricated here.* The desk invents no bank.
+
+Then supply your own BICFIs (8 or 11 characters, ISO 3166 country — the serializer validates the format and refuses malformed ones by name) and country to get the wire document (use a UUIDv4 you mint — ideally the UETR from a trade you settled in the TraderX blotter, since the desk renders the same UETR both ways):
+
+```bash
+curl -s -X POST https://finos.synapticchain.xyz/bridge/fdc3/pacs008 \
+  -H "Content-Type: application/json" \
+  -d '{"context":{"uetr":"11111111-2222-4333-8444-555555555555","amount":"25.00","currency":"USD","debtor":{"name":"Corporate Treasury Desk","account":"ACCT-DBTR-01"},"creditor":{"name":"Institutional Liquidity Desk","account":"ACCT-CDTR-01"}},"instg":{"bicfi":"YOURBANKXXX","name":"Your Institution Name"},"dbtrAgt":{"bicfi":"YOURBANKXXX"},"cdtrAgt":{"bicfi":"COUNTERXXXX"},"country":"US"}'
+```
+
+**Result:** HTTP 200 with `{"ok":true,"xml":"...","uetr":"...","msgId":"..."}` — a schema-located ISO 20022 `pacs.008.001.08` document carrying your UETR, debtor/creditor agents, and settlement details, the same document shape the desk tab renders from a live settlement.
+
+---
+
 ## Institutional Proofs & Peer-Verifiable Artifacts
 
 | Milestone / Standard | Authority / Repository | Proof Status |
