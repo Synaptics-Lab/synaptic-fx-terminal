@@ -55,7 +55,7 @@ For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
 | SYN-TD-019 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23226479.svg)](https://doi.org/10.5281/zenodo.23226479) | Sovereign Stripe-Compatible PaymentIntent REST Emulator |
 | SYN-TD-020 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23226579.svg)](https://doi.org/10.5281/zenodo.23226579) | Decoupled Multi-DLT Settlement Architecture on Token-2022 |
 
-> All 20 DOIs are live-registered on CERN Zenodo (Master Umbrella DOI: [10.5281/zenodo.23227024](https://doi.org/10.5281/zenodo.23227024)). The full protocol specification lives in [Synaptics-Lab/Synaptic-Source → apps/x402-tswp](https://github.com/Synaptics-Lab/Synaptic-Source/tree/master/apps/x402-tswp).
+> All 20 DOIs are live-registered on CERN Zenodo (Master Umbrella DOI: [10.5281/zenodo.23227024](https://doi.org/10.5281/zenodo.23227024)). The full protocol specification lives in [Synaptics-Lab/Synaptic-Source → apps/x402-tswp](https://github.com/Synaptics-Lab/x402-tswp).
 
 ---
 
@@ -119,7 +119,7 @@ BankerX (Settlement Dashboard)
 
 ## X402-TSWP Protocol — The Atomic PTB Pipeline
 
-The [X402-TSWP protocol](https://github.com/Synaptics-Lab/Synaptic-Source/tree/master/apps/x402-tswp) sequences 7 typed settlement instructions inside a single Solana PTB:
+The [X402-TSWP protocol](https://github.com/Synaptics-Lab/x402-tswp) sequences 7 typed settlement instructions inside a single Solana PTB:
 
 ```
 X402G → X402M → X402L → X402B → X402E → X402W → X402N
@@ -128,7 +128,7 @@ X402G → X402M → X402L → X402B → X402E → X402W → X402N
 
 Each instruction introspects the prior via `sysvar::instructions::load_instruction_at_checked`. The entire pipeline commits or rolls back atomically. IETF-drafted. IANA ALPN registered (`0x78 0x34 0x30 0x32`).
 
-→ **Full specification:** [Synaptics-Lab/Synaptic-Source/apps/x402-tswp](https://github.com/Synaptics-Lab/Synaptic-Source/tree/master/apps/x402-tswp)
+→ **Full specification:** [Synaptics-Lab/Synaptic-Source/apps/x402-tswp](https://github.com/Synaptics-Lab/x402-tswp)
 
 ---
 
@@ -211,5 +211,5 @@ run twice unless noted.
 | Daily preflight + phase ladder (cron) | 2 GREEN pairs/day since 2026-10-08 |
 
 Live consoles: [terminal.synapticchain.xyz](https://terminal.synapticchain.xyz) ·
-[colosseum.synapticchain.xyz](https://colosseum.synapticchain.xyz). Full record in the
-[Synaptic-Source README](https://github.com/Synaptics-Lab/Synaptic-Source).
+[colosseum.synapticchain.xyz](https://colosseum.synapticchain.xyz). Full record mirrors publicly at
+[github.com/Synaptics-Lab](https://github.com/Synaptics-Lab) (the org profile carries the same table).
