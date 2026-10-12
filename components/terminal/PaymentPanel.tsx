@@ -318,6 +318,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [pacsXml, setPacsXml] = useState<string | null>(null);
   const [pacs002Xml, setPacs002Xml] = useState<string | null>(null);
   const [adr555Report, setAdr555Report] = useState<ADR555PreflightReport | null>(null);
+  const [wireXml, setWireXml] = useState<string | null>(null);
+  const [wireError, setWireError] = useState<string | null>(null);
+  const [wireLoading, setWireLoading] = useState(false);
   const [currentUetr, setCurrentUetr] = useState<string>("");
   const [currentMsgId, setCurrentMsgId] = useState<string>("");
   const [status, setStatus] = useState<"idle" | "review" | "building" | "settling" | "done" | "error">("idle");
@@ -328,7 +331,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [lastSynapticExplorerUrl, setLastSynapticExplorerUrl] = useState<string | null>(null);
   const [lastCheckpointHeight, setLastCheckpointHeight] = useState<number | null>(null);
   const [lastXrplExplorerUrl, setLastXrplExplorerUrl] = useState<string | null>(null);
-  const [activeInspectorTab, setActiveInspectorTab] = useState<"pacs008" | "pacs002" | "enclave">("pacs008");
+  const [activeInspectorTab, setActiveInspectorTab] = useState<"pacs008" | "pacs002" | "wire" | "enclave">("pacs008");
   const [showValidationModal, setShowValidationModal] = useState(false);
   const xmlRef = useRef<HTMLDivElement>(null);
 
@@ -764,6 +767,9 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       if (resolvedPacs002Xml) {
         setPacs002Xml(resolvedPacs002Xml);
         setActiveInspectorTab("pacs002");
+        // Non-blocking: the outbound wire document builds off the SAME UETR
+        // the receipt anchored — render it into the Wire tab alongside.
+        void fetchWireDoc(uetr, numAmount, pair.split("/")[0]);
       } else if (data.adr555Report) {
         setActiveInspectorTab("enclave");
       }
@@ -926,10 +932,51 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     });
   };
 
+  // One settled UETR → two artifacts: the chain pacs.002 receipt and the
+  // OUTBOUND CBPR+ pacs.008.001.08 wire document a SWIFT-lane counterparty
+  // would ingest. Pure compute on the bridge (:8313) — no session, no chain
+  // reads, no second settlement. The bridge's named refusals (caller-supplied
+  // BICFIs, field errors) pass through verbatim as the honesty surface.
+  const fetchWireDoc = async (wireUetr: string, amt: number, ccy: string) => {
+    setWireLoading(true);
+    setWireError(null);
+    try {
+      const resp = await fetch("/api/pacs008", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          context: {
+            uetr: wireUetr,
+            amount: amt.toFixed(2),
+            currency: ccy,
+            debtor: { name: debtorName, account: debtorAcct },
+            creditor: { name: creditorName, account: creditorAcct },
+          },
+        }),
+        signal: AbortSignal.timeout(12_000),
+      });
+      const j = await readJsonOrExplain(resp);
+      if (resp.ok && j.ok === true && j.xml) {
+        setWireXml(j.xml);
+      } else if (Array.isArray(j.errors) && j.errors.length) {
+        setWireError(j.errors.join("\n"));
+      } else {
+        setWireError(j.detail || j.error || `wire builder returned ${resp.status}`);
+      }
+    } catch (e) {
+      setWireError(`wire_doc_unreachable: ${(e as Error).message}`);
+    } finally {
+      setWireLoading(false);
+    }
+  };
+
   const copyCurrentContent = () => {
     let content = pacsXml || "";
     if (activeInspectorTab === "pacs002" && pacs002Xml) {
       content = pacs002Xml;
+    }
+    if (activeInspectorTab === "wire" && wireXml) {
+      content = wireXml;
     }
     if (content) {
       navigator.clipboard.writeText(content);
@@ -1182,6 +1229,19 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             </button>
 
             <button
+              onClick={() => setActiveInspectorTab("wire")}
+              className={`px-2 py-1 text-[9.5px] font-mono font-bold uppercase border transition-colors flex items-center gap-1.5 ${
+                activeInspectorTab === "wire"
+                  ? "bg-violet-500/20 border-violet-500 text-violet-300"
+                  : "bg-[#141414] border-[#222] text-zinc-400 hover:text-white"
+              }`}
+            >
+              <Zap className="w-3 h-3 text-violet-400" />
+              <span>CBPR+ Outbound Wire</span>
+              {wireXml && <span className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-ping" />}
+            </button>
+
+            <button
               onClick={() => setActiveInspectorTab("enclave")}
               className={`px-2 py-1 text-[9.5px] font-mono font-bold uppercase border transition-colors flex items-center gap-1.5 ${
                 activeInspectorTab === "enclave"
@@ -1197,7 +1257,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
 
           {/* Action buttons */}
           <div className="flex items-center gap-2">
-            {(pacsXml || pacs002Xml) && activeInspectorTab !== "enclave" && (
+            {(pacsXml || pacs002Xml || wireXml) && activeInspectorTab !== "enclave" && (
               <button
                 onClick={copyCurrentContent}
                 className="text-[9px] font-mono text-zinc-400 hover:text-amber-400 flex items-center gap-1 border border-[#222] px-2 py-0.5 rounded-none bg-[#111] transition-colors"
@@ -1271,6 +1331,54 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
               ) : (
                 <div className="overflow-x-auto">
                   <XmlViewer xml={pacs002Xml} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeInspectorTab === "wire" && (
+            <div className="p-3">
+              {wireXml ? (
+                <div className="overflow-x-auto">
+                  <p className="text-[10px] font-mono text-violet-300/90 mb-2">
+                    OUTBOUND CBPR+ pacs.008.001.08 — same UETR as the pacs.002 receipt below. Pure compute
+                    from the settled intent (no session, no chain writes, no second settlement): the document
+                    a SWIFT-lane counterparty would ingest pre-authorization.
+                  </p>
+                  <XmlViewer xml={wireXml} />
+                </div>
+              ) : wireLoading ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-600 font-mono">
+                  <p className="text-[11px] text-zinc-400 font-semibold mb-1">Rendering Outbound Wire Document</p>
+                  <p className="text-[10px] text-zinc-600 max-w-md">
+                    Building the CBPR+ pacs.008.001.08 for the settled UETR on the bridge serializer.
+                  </p>
+                </div>
+              ) : wireError ? (
+                <div className="h-full flex flex-col items-center justify-center p-8">
+                  <div className="max-w-lg border border-rose-800/60 bg-rose-950/30 p-3 font-mono">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-rose-400 mb-2">
+                      Wire Build Refused
+                    </p>
+                    <pre className="text-[10px] text-rose-200 whitespace-pre-wrap">{wireError}</pre>
+                    <p className="text-[9.5px] text-rose-300/70 mt-2">
+                      Refusals are passed through verbatim from the bridge serializer — bank-side BICFIs are
+                      caller-supplied and are never fabricated by the desk.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-8 text-zinc-600 font-mono">
+                  <div className="w-10 h-10 border border-dashed border-violet-700/50 flex items-center justify-center mb-2">
+                    <Zap className="w-5 h-5 text-violet-500" />
+                  </div>
+                  <p className="text-[11px] text-zinc-400 font-semibold mb-1">
+                    Awaiting Settlement — Wire Document Stages With the Receipt
+                  </p>
+                  <p className="text-[10px] text-zinc-600 max-w-md">
+                    Once a settlement confirms, the pacs.008.001.08 outbound document for the same UETR is
+                    rendered here next to the pacs.002 receipt — one settled UETR, two artifacts.
+                  </p>
                 </div>
               )}
             </div>
