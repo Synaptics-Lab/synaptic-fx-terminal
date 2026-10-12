@@ -14,6 +14,22 @@
 
 ---
 
+## 🖥️ Live Entry — Colosseum Radar Submission
+
+Everything in this repository runs live at **[colosseum.synapticchain.xyz](https://colosseum.synapticchain.xyz)**:
+
+| Path | What it is |
+|---|---|
+| [`/`](https://colosseum.synapticchain.xyz/) | Sovereign clearinghouse console — live settlement desk |
+| [`/demo`](https://colosseum.synapticchain.xyz/demo/) | Nine-stage live-fire settlement demo across all three rails |
+| [`/can`](https://colosseum.synapticchain.xyz/can/) | Continuous Atomic Netting on the 400 ms estate window, live |
+| [`/brief`](https://colosseum.synapticchain.xyz/brief/) | Position brief — the architecture and the case |
+| [`/milestones`](https://colosseum.synapticchain.xyz/milestones/) | Shipped-scope milestone receipts with live evidence |
+
+For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
+
+---
+
 ## Registered Research — 20 CERN Zenodo DOIs
 
 | ID | DOI | Title |
