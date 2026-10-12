@@ -68,17 +68,17 @@ export function IntroModal({ isOpen, onClose }: IntroModalProps) {
               Judge Flow — Open the Blotter
             </span>
             <p className="text-zinc-400 text-[10.5px]">
-              Open the <strong>TraderX</strong> blotter at{" "}
-              <a
-                href="https://traderx.synapticchain.xyz/angular/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-amber-300 underline decoration-amber-500/40 hover:text-amber-200"
-              >
-                traderx.synapticchain.xyz/angular/
-              </a>{" "}
-              — that blotter is wired to this desk. Place a trade and click <em>Settle</em>: the FDC3 <code className="text-zinc-300">StartPayment</code> intent carrying the SWIFT UETR lands here, runs the enclave pre-flight, initiates <code className="text-zinc-300">pacs.008</code> settlement, and returns the <code className="text-zinc-300">pacs.002</code> receipt into the blotter below.
+              The <strong>TraderX</strong> blotter is wired directly to this desk — the button below opens it in a new tab. Place a trade and click <em>Settle</em>: the FDC3 <code className="text-zinc-300">StartPayment</code> intent carrying the SWIFT UETR lands here, runs the enclave pre-flight, initiates <code className="text-zinc-300">pacs.008</code> settlement, and returns the <code className="text-zinc-300">pacs.002</code> receipt into the blotter below.
             </p>
+            <a
+              href="https://traderx.synapticchain.xyz/angular/"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase tracking-wider text-[10.5px] transition-colors"
+            >
+              <span>Open the TraderX Blotter — New Tab</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
             <p className="text-[10.5px] text-zinc-300 border border-amber-700/50 bg-amber-950/20 p-2">
               The desk processes exactly <strong>one</strong> settlement — a live single transaction, kept minimal and safe to run. Every trade mints a fresh SWIFT UETR, and a settled UETR is never executed twice: resubmitting the same UETR is <strong>refused by design</strong>. That refusal is the product — replay and double-settlement protection.
             </p>
