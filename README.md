@@ -12,6 +12,8 @@
 [![OpenEAGO PR #65](https://img.shields.io/badge/FINOS%20OpenEAGO-PR%20%2365-orange)](https://github.com/finos/OpenEAGO/pull/65)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
+<p align="center"><img src="bankerx-traderx-banner.svg" width="1280" alt="BankerX TraderX banner — Colosseum Radar 2026"/></p>
+
 ---
 
 ## Live Entry — Colosseum Radar Submission
