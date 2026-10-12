@@ -182,8 +182,15 @@ cd client && npm install && npm run dev
 
 ## License
 
-Distributed under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).  
-Copyright 2026 Synaptics Lab & FINOS Contributors.
+**ALL RIGHTS RESERVED** — see [LICENSE](LICENSE). This repository is published
+for evaluation and verification: read, build, run, and evaluate the desk;
+redistribution, resale, and derivative commercial use require written
+permission. The **standards surface** of the work is open to all — any party
+may implement the FDC3 3.0 `StartPayment` intent / `fdc3.payment` context
+vocabulary (per FINOS PR #2204) and the two-tier adapter interface on their
+own settlement backend. This license governs this repository's particular
+implementation only.
+
 ---
 
 ## Verification record — SynapticChain estate (2026-10-12)

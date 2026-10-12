@@ -1,0 +1,30 @@
+                                 ALL RIGHTS RESERVED
+
+Copyright (c) 2026 Synaptics Lab (SynapticChain).
+
+This repository is published for EVALUATION AND VERIFICATION ONLY.
+
+ - The BankerX / FX Terminal application in this repository (including the
+   FDC3 desk, adapters, and the ADR-555 enclave attestation code under
+   lib/enclave/) may be read, built, run, and evaluated — but is not
+   licensed for redistribution, sublicensing, derivative desk deployments,
+   or any commercial use without written permission.
+ - The enclave attestation methods are published so that settlement claims
+   can be independently evaluated — publication for verification is not a
+   license to reuse, re-implement from, or embed these methods in another
+   product without written permission.
+ - Settlement desk operations (keys, custodian infrastructure, mint
+   authorities, the SynapticChain runtime) are proprietary and are NOT
+   included in this repository. Access is granted on diligence request.
+ - The standard-conformant surface of the work is intentionally open:
+   the FDC3 3.0 intent/context vocabulary (fdc3.payment,
+   synaptic.settlementStatus) and the two-tier adapter interface may be
+   implemented by anyone, on any settlement backend, per the FINOS FDC3
+   specification. This license governs THIS repository's particular
+   implementation only.
+
+Third-party trademarks referenced anywhere in this repository (including
+"Stripe", "Solana", "XRPL", "FINOS") belong to their owners; descriptive
+use here is not affiliation or endorsement.
+
+Contact: veritasvaultone@gmail.com  ·  https://synapticchain.xyz
