@@ -10,7 +10,7 @@
 [![TraderX PR #470](https://img.shields.io/badge/FINOS%20TraderX-PR%20%23470-orange)](https://github.com/finos/traderX/pull/470)
 [![FDC3 PR #2204](https://img.shields.io/badge/FINOS%20FDC3-PR%20%232204%20MERGED-brightgreen)](https://github.com/finos/FDC3/pull/2204)
 [![OpenEAGO PR #65](https://img.shields.io/badge/FINOS%20OpenEAGO-PR%20%2365-orange)](https://github.com/finos/OpenEAGO/pull/65)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: ALL RIGHTS RESERVED](https://img.shields.io/badge/License-ALL%20RIGHTS%20RESERVED-e11d48.svg)](#license)
 
 <p align="center"><img src="bankerx-traderx-banner.svg" width="1280" alt="BankerX TraderX banner — Colosseum Radar 2026"/></p>
 
