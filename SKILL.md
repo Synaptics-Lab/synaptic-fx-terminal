@@ -1,6 +1,6 @@
 ---
 name: bankerx-agent-settlement
-description: Autonomous AI Agent Onboarding, Keyless DvP/PvP Settlement, and Continuous Netting Protocol on BankerX & Solana Token-2022.
+description: Autonomous AI Agent Onboarding, Keyless DvP/PvP Settlement, OUSD x402 Paywall Spending, Continuous Netting, and the Agent Speedrun (escrow bond + bridge swap, receipts) on BankerX & Solana Token-2022.
 ---
 
 # BankerX — Autonomous Agent Onboarding & Settlement Skill
@@ -85,3 +85,58 @@ For trading desks and human-in-the-loop workflows:
 3. The trade raises the **FDC3 `StartPayment` intent** (Linux Foundation PR #2204, merged into `finos/FDC3:main` 2026-10-08).
 4. BankerX auto-spawns beside the blotter with the UETR and trade context pre-loaded.
 5. Upon trilateral settlement, the blotter row automatically flips `PNDG → SETTLED` and persists across browser reloads.
+
+---
+
+## 6. Spend Your Working Capital: OUSD Buys x402 Paywalls
+
+Your onboarding grant is live money. The MCP gateway (`:8404`, public via the same-origin
+proxy) sells access to priced tools over the x402 protocol — and besides XRPL, it now accepts
+**estate-issued OUSD on Solana devnet** as a payment rail:
+
+```bash
+curl -s -i -X POST https://colosseum.synapticchain.xyz/gw/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_mesh_status","arguments":{}}}'
+```
+
+**HTTP 402 advert carries:** `rails: {xrpl:"xrpl-altnet", ousd:"ousd-devnet", …}`,
+`ousd_mint 2ANrmtAcMd8eihFGvbyAkrAWveq8nU6uMTigbWBuigNe` (Token-2022),
+`ousd_recipient`, `ousd_price_raw "1000"` (1 credit / 1000 raw = 0.001 OUSD), and the
+`ousd_credit_rule`: repay **floor(delivered/price)** credits and reuse the same
+`x-synaptic-tx` / `x-synaptic-rail` / `x-synaptic-challenge` headers on every call until
+they run out.
+
+Flow (the open x402 model — the gateway verifies on-chain, it brokers nothing):
+1. Take the challenge from the 402 body and pay the advertised amount to `ousd_recipient`
+   with an SPL Memo v2 in the same transaction carrying `X402G:<challenge>` — the
+   x402-TSWP tag-'G' wire grammar (`draft-shabazz-http-x402-tswp`; validated by
+   `apps/x402-tswp/src/discriminators.mjs`). NO other memo is accepted.
+2. Replay the first tool call with `x-synaptic-tx: <solana signature>`,
+   `x-synaptic-rail: ousd-devnet`, `x-synaptic-challenge: <challenge>` → grant 200.
+3. Keep calling with the same headers — the gateway reads `transferChecked` back from
+   the ledger (`verifyOusd`, fail-closed on memo/recipient/mint/amount), credits your
+   batch, and debits per call. A used signature can never grant twice.
+
+---
+
+## 7. The Agent Speedrun: Three Deeds, One Budget, Receipts Brought Back
+
+The compound proof of agent economic agency, run by the live fleet (agents `atlas` and
+`nova`, on a 30-minute rotation — task list has 7 entries):
+
+| Leg | Deed | Wire grammar |
+|---|---|---|
+| 1 | Buy an x402 paywall with OUSD (§6) | `X402G:<challenge>` on Solana |
+| 2 | Lock its **own** 0.1 XRP as an XRPL altnet escrow bond, registered chain-first on the BondSession ledger | `X402B:<session>:<agent syn1>` |
+| 3 | Bridge-swap 1.0 OUSD → SYN on the rail-exchange desk at the locked maker rate, then the cron drains the bond after `CancelAfter` | `X402D:<intent>:<agent syn1>` |
+
+The budget is declared in code (`SPEEDRUN_BUDGET` in `ops-scripts/agent_fleet_tasks.py`,
+in the [Synaptic-Source](https://github.com/Synaptics-Lab/Synaptic-Source) monorepo) and enforced
+**before each leg** — refuse-to-overpay is structural, not advisory. One receipt file binds
+all three legs; the escrow create/cancel signatures land on the public XRPL altnet where
+anyone (judge or agent) verifies them with a plain `tx` lookup. Live proof from the
+2026-10-15 run (agent `atlas`): `EscrowCreate 73F7BE9623C278D3F3A61695EA4B8F8D5920A0ED3CCD0085498A0FF4DCDBD8F3`,
+drained by `EscrowCancel B3BE662739FC3119D1F463CEAF85F186CAF326F7BAAC478544740C4841E009A0`,
+escrowed XRP returned net of the 160-drop fee. Judge-shell verification:
+[`JUDGES_FLOW.md` Step 7](JUDGES_FLOW.md).
