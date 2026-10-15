@@ -101,6 +101,51 @@ curl -s -X POST https://finos.synapticchain.xyz/bridge/fdc3/pacs008 \
 
 ---
 
+### Step 7: The Agent-Economy Speedrun — One Budget, Three On-Chain Deeds, Receipts Brought Back
+
+Our fleet agents (`atlas`, `nova` — soulbound identities from Step 1) run a compound task on a
+30-minute cron: with one budget **declared in code and enforced before each leg** (paywall ≤
+0.005 OUSD · bond = 0.1 XRP + 160-drop fee · swap 1.0 OUSD · funding cap 1.0 OUSD), an agent
+does all three deeds on-chain and writes one receipt:
+1. **Buys an x402 paywall with OUSD** — the gateway's HTTP 402 advert now offers a *third*
+   rail alongside XRPL: estate-issued Token-2022 OUSD on Solana devnet. The agent pays the
+   challenge memo, replays the same headers, and the paywall grants + debits on credits.
+2. **Locks its OWN 0.1 XRP as an escrow bond** — `EscrowCreate` on XRPL altnet memo'd
+   `X402B:<session>:<agent-identity>`, registered chain-first on the BondSession ledger. No
+   keys ever leave the estate's hands (`keys_held: false` from Step 1 still holds — the agent
+   signs its own rail legs, custody stays with humans).
+3. **Bridge-swaps 1.0 OUSD → SYN on the desk** at the locked market rate.
+
+Then the cron itself is the poll: after the bond's `CancelAfter` elapses, the agent cancels its
+own escrow and the XRP returns to its wallet. Nothing is settled-by-trust — every leg is
+re-checkable from a public shell. Two receipts from the 2026-10-15 speedrun (agent `atlas`,
+XRP address `rHYnGrZ1wLjKW41kAxXKtwJwz6MGbyZ5CC`):
+
+```bash
+# The 402 advert with the OUSD rail (HTTP 402 is the expected response):
+curl -s -i -X POST https://colosseum.synapticchain.xyz/gw/mcp \
+  -H "Content-Type: application/json" -H "Accept: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_mesh_status","arguments":{}}}'
+# → rails: {"xrpl":"xrpl-altnet","ousd":"ousd-devnet",…}, ousd_mint 2ANrmtAcMd8eih… (Token-2022),
+#   ousd_recipient, ousd_price_raw "1000" (1 credit / 1000 raw = 0.001 OUSD)
+
+# The escrow bond, verifiable on the PUBLIC XRPL testnet node:
+curl -s -X POST https://s.altnet.rippletest.net:51234 -H "Content-Type: application/json" \
+  -d '{"method":"tx","params":[{"transaction":"73F7BE9623C278D3F3A61695EA4B8F8D5920A0ED3CCD0085498A0FF4DCDBD8F3"}],"id":1}'
+# → EscrowCreate · 100000 drops · destination rHE3EubNfwxQvL6AB6ZHC9jHw1U2WGWhot (bond custodian)
+#   memo decodes to X402B:sr-atlas-87589a070ca2:syn19vn70yy… (the session + the agent's syn1 identity)
+
+# …and its drain after CancelAfter (the bond was returned to the agent):
+curl -s -X POST https://s.altnet.rippletest.net:51234 -H "Content-Type: application/json" \
+  -d '{"method":"tx","params":[{"transaction":"B3BE662739FC3119D1F463CEAF85F186CAF326F7BAAC478544740C4841E009A0"}],"id":1}'
+# → EscrowCancel · OfferSequence 21552800 · same agent account; ledger balance read back +0.1 XRP
+```
+
+One budget, three rails, one receipt file — and the collateral round-trip closes in under 14
+minutes, lock (11:59Z) → drain (12:13Z), by the agent itself.
+
+---
+
 ## Institutional Proofs & Peer-Verifiable Artifacts
 
 | Milestone / Standard | Authority / Repository | Proof Status |
@@ -116,11 +161,12 @@ curl -s -X POST https://finos.synapticchain.xyz/bridge/fdc3/pacs008 \
 
 ## Codebase Navigation
 
-* **Enclave & Spending Limits:** [`nodes-api/local_enclave_mcp.py`](file:///Users/abdulhome/Downloads/Synaptic-Source-master/nodes-api/local_enclave_mcp.py)
-* **Autonomous Agent Harness:** [`apps/bankerX/agent/harness.mjs`](file:///Users/abdulhome/Downloads/Synaptic-Source-master/apps/bankerX/agent/harness.mjs)
-* **X402-TSWP Wire Discriminators:** [`apps/x402-tswp/src/discriminators.mjs`](file:///Users/abdulhome/Downloads/Synaptic-Source-master/apps/x402-tswp/src/discriminators.mjs)
-* **Stripe-to-Solana Token-2022 Bridge:** [`apps/bankerX/bridge/stripe_shim.mjs`](file:///Users/abdulhome/Downloads/Synaptic-Source-master/apps/bankerX/bridge/stripe_shim.mjs)
-* **Continuous Netting Engine:** [`mcp-402-gateway/can-engine`](file:///Users/abdulhome/Downloads/Synaptic-Source-master/mcp-402-gateway/can-engine)
+* **Enclave & Spending Limits:** `nodes-api/local_enclave_mcp.py`
+* **Autonomous Agent Harness:** `apps/bankerX/agent/harness.mjs`
+* **X402-TSWP Wire Discriminators:** `apps/x402-tswp/src/discriminators.mjs`
+* **Stripe-to-Solana Token-2022 Bridge:** `apps/bankerX/bridge/stripe_shim.mjs`
+* **Continuous Netting Engine:** `mcp-402-gateway/can-engine`
+* **Agent-Economy Fleet Worker (Step 7):** `ops-scripts/agent_fleet_tasks.py` — the `agent_speedrun` task and its in-code `SPEEDRUN_BUDGET`
 
 ---
 
