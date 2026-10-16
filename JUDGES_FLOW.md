@@ -228,6 +228,7 @@ operator's own 15-second performance law.
 | **TraderX Reference Integration** | Linux Foundation FINOS ([PR #470](https://github.com/finos/traderX/pull/470)) | Open in Active Review |
 | **OpenEAGO Settlement Context** | Linux Foundation FINOS ([Issue #68](https://github.com/finos-labs/open-eago/issues/68)) | Open Architectural Standard |
 | **20 CERN Zenodo Technical DOIs** | European Organization for Nuclear Research (CERN) | Live Registered ([10.5281/zenodo.23227024](https://doi.org/10.5281/zenodo.23227024)) |
+| **Mobile/SMS/L1 formal proofs** | SYN-TD-001…022 disclosures | `SYN-TD-022` (2026-10-16): the CAN temporal shell carries a **Tier-3 formal proof** — TLA+ + Quint spec model-checked with **0 invariant violations** (TLC: 201.1M states; Quint: Apalache bounded check `NoError` + 10,000-simulation run `[ok]`, re-run independently on the estate). Eight theorems incl. one-receipt-per-window and Σ-conservation-on-settle. Spec: `docs/specs/formal/can_temporal_shell.qnt`, receipt: `ops/zenodo/syn-td-022-formal-pack-2026-10-16/` |
 | **IETF Specification** | Internet Engineering Task Force | `draft-shabazz-http-x402-tswp-01` |
 | **IANA ALPN Protocol Registration** | Internet Assigned Numbers Authority | Registered ALPN ID `0x78343032` (`x402`) |
 
