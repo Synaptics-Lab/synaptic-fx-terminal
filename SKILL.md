@@ -1,11 +1,11 @@
 ---
 name: bankerx-agent-settlement
-description: Autonomous AI Agent Onboarding, Keyless DvP/PvP Settlement, OUSD x402 Paywall Spending, Continuous Netting, and the Agent Speedrun (escrow bond + bridge swap, receipts) on BankerX & Solana Token-2022.
+description: Autonomous AI Agent Onboarding, Keyless DvP/PvP Settlement, the Agent Link Floor (tiers, harness mart, custodian INTENT lane), OUSD x402 Paywall Spending, Continuous Netting, and the Agent Speedrun on BankerX & Solana Token-2022.
 ---
 
 # BankerX — Autonomous Agent Onboarding & Settlement Skill
 
-> Autonomous M2M financial rail: self-onboard, execute keyless Delivery-versus-Payment (DvP) and FX (PvP) settlements on Solana Token-2022, verify sub-8ms hardware enclave screening, and stream 400ms continuous netting.
+> Autonomous M2M financial rail: self-onboard, buy license tiers with real on-ledger payments, download programmable money harnesses from the mart, drive escrow custody through brokered intents, execute keyless Delivery-versus-Payment (DvP) and FX (PvP) settlements on Solana Token-2022, verify sub-8ms hardware enclave screening, and stream 400ms continuous netting.
 
 ---
 
@@ -140,3 +140,64 @@ anyone (judge or agent) verifies them with a plain `tx` lookup. Live proof from 
 drained by `EscrowCancel B3BE662739FC3119D1F463CEAF85F186CAF326F7BAAC478544740C4841E009A0`,
 escrowed XRP returned net of the 160-drop fee. Judge-shell verification:
 [`JUDGES_FLOW.md` Step 7](JUDGES_FLOW.md).
+
+---
+
+## 8. The Agent Link Floor: Tiers, the Harness Mart, and the Custodian Intent Lane
+
+Production plane: `https://bankerxplus.synapticchain.xyz`. You never learn a settlement language
+or handle custody keys — you register a banking-access identity, buy license tiers with real
+altnet payments, download programmable harnesses, and submit custody **intents** that the
+estate executes with its own keys.
+
+### 8.1 Onboard to the floor (identity only — NOKEYS/BYOK)
+
+```bash
+curl -s -X POST https://bankerxplus.synapticchain.xyz/api/agent/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"my-desk-agent","agent_name":"My Desk Agent"}'
+# → {"agent_id":"ag_…","token":"atok_…"} — token shown ONCE; keep it in a 0600 file.
+# Tier 1 is free. Desktops are tier-gated; the manifest lists everything:
+curl -s https://bankerxplus.synapticchain.xyz/api/agent/desktops
+```
+
+### 8.2 Buy a tier (real money, verified on the Ripple ledger, redeem-once)
+
+Pay the tier price in XRPL altnet drops to the gateway recipient with memo
+`X402G:TIER:<agent_id>`; the estate verifies the payment on-ledger (Payment type,
+destination, drops ≥ price, memo binds your agent, validated) before granting. Each tx
+hash redeems exactly once; underpayments are refused with the expected payment echoed.
+Tier 2 = 1,000,000 drops · tier 3 = 5,000,000 drops (altnet/testnet only by design).
+
+### 8.3 The harness mart (download, don't learn)
+
+```bash
+curl -s https://bankerxplus.synapticchain.xyz/api/agent/harnesses
+# Every bundle: sku, tier_required, price_drops, sha256. Free tier-1 SKUs
+# download with any bearer:
+curl -s -H "Authorization: Bearer $TOKEN" \
+  https://bankerxplus.synapticchain.xyz/api/agent/harnesses/rails-telemetry/download
+# Paid SKUs refuse honestly (HTTP 402 harness_not_licensed) with the exact
+# expected payment: pay memo X402H:HARNESS:<agent_id> ≥ price_drops to the
+# gateway recipient, then POST /harnesses/<sku>/purchase {"tx_hash": …}.
+# Each purchase tx redeems once; a fabricated hash gets txnNotFound, never a license.
+```
+
+Publishing your own harness: `POST /harnesses` with flat files ≤ 256 KB and sha256 over
+the canonical file map. The author must hold the tier the harness demands, and a published
+sku can only be republished by its original author — no hijacking another seller's buyers.
+
+### 8.4 The custodian intent lane (tier 3 — agents propose, the estate executes)
+
+The `escrow` desktop at `POST /api/desktops/escrow/<tool>` carries the brokered custody
+lane: `escrow_create` / `escrow_status` / `escrow_finish` / `escrow_cancel`. The broker
+binds ownership at create time (client-supplied owner/sequence are stripped), holds one
+live escrow slot per agent, caps creates at 1,000,000 drops, and rate-limits 5 creates /
+20 intents per hour. Execution happens over loopback on the escrow server whose signers
+never leave its vault; every intent, refusal, and terminal state is append-only audited.
+
+Honest lifecycle semantics (verified live 2026-10-16): `escrow_finish` without a real
+pacs.002 Acsc receipt + UETR returns `release_refused` / `too_early` and **keeps your
+slot**; only `released` / `escrow_not_found` / `cancelled_funds_returned` release it.
+Operator verbs (`window_open/settle`, `margin_*`, `bond_settle/forfeit`) refuse **by
+name** — clearinghouse custody stays operator-side. Cold intent latency 7.7–9.5 s.

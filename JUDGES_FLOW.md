@@ -146,6 +146,80 @@ minutes, lock (11:59Z) → drain (12:13Z), by the agent itself.
 
 ---
 
+### Step 8: The Agent Link Floor — the Harness Mart & the Custodian Intent Lane
+
+Production surface: **https://bankerxplus.synapticchain.xyz** (the `F6` tab is the agentic
+floor: rosters, license ownership with on-ledger purchase receipts, and a live action stream
+of every agent probe/call/purchase). Three things to verify, all from a plain shell:
+
+**8a. Zero-config agent registration (identity only, no LLM keys — BYOK/NOKEYS):**
+
+```bash
+curl -s -X POST https://bankerxplus.synapticchain.xyz/api/agent/agents/register \
+  -H "Content-Type: application/json" -H "User-Agent: ColosseumJudge/1.0" \
+  -d '{"name":"judge-desk-smoke","agent_name":"Judge Desk Smoke"}'
+# → agent_id ag_… + Bearer token, shown ONCE, stored only hash-side.
+#   Tier 1 is free; tier 2/3 are bought by REAL altnet payments
+#   (memo X402G:TIER:<agent_id>), verified on the Ripple ledger, redeem-once.
+```
+
+**8b. The harness mart — users don't learn a language, they download a harness:**
+
+```bash
+curl -s https://bankerxplus.synapticchain.xyz/api/agent/harnesses | python3 -m json.tool
+# → published bundles with prices, tiers and sha256 integrity. Operator-seeded
+#   live catalog: rails-telemetry (free, tier 1) · escrow-desk (250,000 drops,
+#   tier 3) · clearinghouse-ops (100,000 drops, tier 2).
+```
+
+A purchase is on-ledger and redeem-once. Real receipt from the 2026-10-16 mart live-fire
+(buyer agent `ag_f59994c553a0`, 250,000 drops, memo binds the buyer's agent id, then the
+license survived a service restart):
+
+```bash
+curl -s -X POST https://s.altnet.rippletest.net:51234 -H "Content-Type: application/json" \
+  -d '{"method":"tx","params":[{"transaction":"A8A41B9DC6DB28746FC62B484B23FFC20536E2DED86321C395C4E0CD47974C5C"}],"id":1}'
+# → Payment · 250000 drops → gateway recipient rKmtCQXuZpXWgb7KiwKbiQwJeX6AtbpMtC
+#   memo decodes to X402H:HARNESS:ag_f59994c553a0 — a replay of the same tx_hash
+#   returns 409 "tx_hash already redeemed on the fee lane".
+```
+
+**8c. The custodian INTENT lane — agents propose, the estate executes:**
+
+A tier-3 agent never holds custody keys. It submits intents to
+`/api/desktops/escrow/<tool>` (`escrow_create` / `escrow_status` / `escrow_finish` /
+`escrow_cancel`); the broker stamps ownership from its bound escrow slot (client-supplied
+owner/sequence are stripped), caps creates at 1,000,000 drops, rate-limits 5 creates / 20
+intents per hour, and executes over loopback with keys that never leave the escrow server's
+vault. Release is evidence-gated end-to-end (pacs.002 Acsc + UETR) — a finish without real
+evidence is refused honestly and the ownership slot is retained. Operator verbs
+(`window_open/settle`, `margin_*`, `bond_settle/forfeit`) refuse **by name**: custody of the
+clearinghouse stays operator-side. Every intent, refusal and terminal state lands in an
+append-only custody ledger and on the F6 action stream.
+
+Full lifecycle receipt from the 2026-10-16 live-fire (the estate-signed escrow the shipped
+`escrow-desk` harness itself drove, escrow server owner `rHE3EubNfwxQvL6AB6ZHC9jHw1U2WGWhot`,
+dest. gateway recipient, corridor `xrp-to-ckes`, 1000 drops, OfferSequence 20783393):
+
+```bash
+# lock (escrow_create through the intent lane):
+curl -s -X POST https://s.altnet.rippletest.net:51234 -H "Content-Type: application/json" \
+  -d '{"method":"tx","params":[{"transaction":"5BEF17CD4DD406832CAF94EC76E6A3E0B5DC89A864828075858B038EA402D9AE"}],"id":1}'
+# → EscrowCreate · FinishAfter/CancelAfter ~90/150s · owner + sequence broker-bound
+
+# …and the return path (escrow_cancel through the lane after CancelAfter):
+curl -s -X POST https://s.altnet.rippletest.net:51234 -H "Content-Type: application/json" \
+  -d '{"method":"tx","params":[{"transaction":"8F4CF9A5C26A8D5072350F69B16B5E97E23C37A45B0C14C8D72DE76B30A6D194"}],"id":1}'
+# → EscrowCancel · OfferSequence 20783393 — funds returned to the escrow owner
+#   (the estate's custodian wallet), the agent's single escrow slot released
+#   (custody_ownership.json → {}).
+```
+
+Cold intent latency 7.7–9.5 s (license-lane subprocess + altnet validation) — under the
+operator's own 15-second performance law.
+
+---
+
 ## Institutional Proofs & Peer-Verifiable Artifacts
 
 | Milestone / Standard | Authority / Repository | Proof Status |
@@ -167,6 +241,8 @@ minutes, lock (11:59Z) → drain (12:13Z), by the agent itself.
 * **Stripe-to-Solana Token-2022 Bridge:** `apps/bankerX/bridge/stripe_shim.mjs`
 * **Continuous Netting Engine:** `mcp-402-gateway/can-engine`
 * **Agent-Economy Fleet Worker (Step 7):** `ops-scripts/agent_fleet_tasks.py` — the `agent_speedrun` task and its in-code `SPEEDRUN_BUDGET`
+* **Agent Link broker / mart / custody lane (Step 8):** `services/agent-observability` — the axum broker behind https://bankerxplus.synapticchain.xyz (tier purchase verification, harness mart with redeem-once licensing, custodian intent lane with the append-only custody ledger)
+* **Escrow server (the lane's executor):** `mcp/interledger-escrow-server` — signs EscrowCreate/Finish/Cancel on XRPL altnet, keys in 0600 vault
 
 ---
 
