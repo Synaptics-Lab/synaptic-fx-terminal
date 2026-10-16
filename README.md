@@ -32,7 +32,7 @@ For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
 
 ---
 
-## Registered Research — 20 CERN Zenodo DOIs
+## Registered Research — 24 CERN Zenodo DOIs
 
 | ID | DOI | Title |
 |---|---|---|
@@ -56,8 +56,12 @@ For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
 | SYN-TD-018 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23226408.svg)](https://doi.org/10.5281/zenodo.23226408) | Bilateral FX Market-Making with Performance Bond Escrows |
 | SYN-TD-019 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23226479.svg)](https://doi.org/10.5281/zenodo.23226479) | Sovereign Stripe-Compatible PaymentIntent REST Emulator |
 | SYN-TD-020 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23226579.svg)](https://doi.org/10.5281/zenodo.23226579) | Decoupled Multi-DLT Settlement Architecture on Token-2022 |
+| SYN-TD-021 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23373168.svg)](https://doi.org/10.5281/zenodo.23373168) | CAN Temporal Shell — Fail-Closed Continuous Netting Coordinator |
+| SYN-TD-022 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23427407.svg)](https://doi.org/10.5281/zenodo.23427407) | Type-State Enforced Temporal Shells — Formal Verification (TLA+/Quint, 0 violations) |
+| SYN-TD-023 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23427410.svg)](https://doi.org/10.5281/zenodo.23427410) | Watermark-Bitmap Lanes — Gap-Tolerant Nonce Formal Laws (TLA+/Quint, 0 violations) |
+| SYN-TD-024 | [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23427412.svg)](https://doi.org/10.5281/zenodo.23427412) | The Cursor Never Leads the Ledger — Checkpoint-Replay Catchup Formal Laws |
 
-> All 20 DOIs are live-registered on CERN Zenodo (Master Umbrella DOI: [10.5281/zenodo.23227024](https://doi.org/10.5281/zenodo.23227024)). The full protocol specification lives in [Synaptics-Lab/Synaptic-Source → apps/x402-tswp](https://github.com/Synaptics-Lab/x402-tswp).
+> All 24 DOIs are live-registered on CERN Zenodo (Master Umbrella DOI: [10.5281/zenodo.23227024](https://doi.org/10.5281/zenodo.23227024)). The full protocol specification lives in [Synaptics-Lab/Synaptic-Source → apps/x402-tswp](https://github.com/Synaptics-Lab/x402-tswp). SYN-TD-022 through SYN-TD-024 are machine-checked formal verification packs (Quint 0.33.0 simulation + Apalache 0.62.1 bounded model-checking, zero violations), written directly from the implementation.
 
 ---
 
@@ -175,7 +179,7 @@ cd client && npm install && npm run dev
 - **ISO 20022 CBPR+** — pacs.008.001.08 byte-exact XML synthesis
 - **IETF** — `draft-shabazz-http-x402-tswp-00`
 - **IANA** — ALPN ID `0x78343032`, HTTP Field registrations (Issues #62, #63)
-- **CERN Zenodo** — 20 registered DOIs, peer-review-calibre research corpus (SYN-TD-001 through SYN-TD-020)
+- **CERN Zenodo** — 24 registered DOIs, peer-review-calibre research corpus (SYN-TD-001 through SYN-TD-024; 022–024 are machine-checked formal verification packs)
 - **EU DORA** — ICT resilience aligned (hardware enclave, fail-closed abort)
 
 ---
