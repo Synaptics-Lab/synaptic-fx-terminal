@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# heartbeat runtime state + receipts (runtime artifacts, not source)
+/data/settler-heartbeat.*
