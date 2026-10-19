@@ -204,12 +204,17 @@ async function pollL1Anchor(hash: string): Promise<L1Anchor | null> {
   return null;
 }
 
+// Presets re-baselined to the funded settler float at REAL-drop scale
+// (operator ruling 2026-10-19): 1 XRP = 1e6 drops, corridor fx 322.50
+// cKES/XRP, desk rate 129.42 → a $A instructed leg ≈ A × 0.995 × 0.4013 XRP.
+// $4K ≈ 1,598.7 XRP leg fits the 1,870.52 XRP float with reserve headroom;
+// anything above the float is refused honestly by the R-U pre-claim gate.
 const AMOUNT_PRESETS = [
-  { label: "$1M", val: "1000000" },
-  { label: "$2.5M", val: "2500000" },
-  { label: "$5M", val: "5000000" },
-  { label: "$10M", val: "10000000" },
-  { label: "$25M", val: "25000000" },
+  { label: "$250", val: "250" },
+  { label: "$500", val: "500" },
+  { label: "$1K", val: "1000" },
+  { label: "$2.5K", val: "2500" },
+  { label: "$4K", val: "4000" },
 ];
 
 export type SettlementRail = "trilateral" | "solana" | "xrpl" | "synaptic";
@@ -236,7 +241,7 @@ const FDC3_DESK_CONFIGS: Record<FDC3Channel, FDC3DeskConfig> = {
     debtor: "Corporate Treasury Desk",
     creditor: "Institutional Liquidity Desk",
     defaultPair: "USD/KES",
-    defaultAmount: "2500000",
+    defaultAmount: "1000",
     badgeClass: "text-amber-400 bg-amber-950/40 border-amber-800",
     buttonClass: "bg-amber-400 text-black font-bold",
   },
@@ -248,7 +253,7 @@ const FDC3_DESK_CONFIGS: Record<FDC3Channel, FDC3DeskConfig> = {
     debtor: "Artemis AI Treasury Agent #042",
     creditor: "Solana Automated Liquidity Vault",
     defaultPair: "USD/KES",
-    defaultAmount: "1000000",
+    defaultAmount: "500",
     badgeClass: "text-rose-400 bg-rose-950/40 border-rose-800",
     buttonClass: "bg-rose-500 text-white font-bold",
   },
@@ -260,7 +265,7 @@ const FDC3_DESK_CONFIGS: Record<FDC3Channel, FDC3DeskConfig> = {
     debtor: "Global Corporate Treasury Desk",
     creditor: "Tier-1 Liquidity Provider Desk",
     defaultPair: "EUR/USD",
-    defaultAmount: "25000000",
+    defaultAmount: "2500",
     badgeClass: "text-emerald-400 bg-emerald-950/40 border-emerald-800",
     buttonClass: "bg-emerald-500 text-black font-bold",
   },
@@ -272,14 +277,14 @@ const FDC3_DESK_CONFIGS: Record<FDC3Channel, FDC3DeskConfig> = {
     debtor: "Sovereign DPI Settlement Node",
     creditor: "Central Bank TSA Clearing Vault",
     defaultPair: "USD/ZMW",
-    defaultAmount: "5000000",
+    defaultAmount: "1000",
     badgeClass: "text-sky-400 bg-sky-950/40 border-sky-800",
     buttonClass: "bg-sky-500 text-black font-bold",
   },
 };
 
 export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
-  const [amount, setAmount] = useState("2500000");
+  const [amount, setAmount] = useState("1000");
   const [pair, setPair] = useState("USD/KES");
   const [channel, setChannel] = useState<FDC3Channel>("global");
   const [rail, setRail] = useState<SettlementRail>("trilateral");
