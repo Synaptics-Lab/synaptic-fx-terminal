@@ -27,6 +27,8 @@ import {
   buildDeskSettlementMemo,
   buildCorridorAttestationMemo,
   buildAssetBindingMemo,
+  buildDeskDepositMemo,
+  buildDeskPayoutMemo,
 } from '../src/discriminators.mjs';
 
 /** Every builder output must validate; every validation must expose the exact segments. */
@@ -225,8 +227,9 @@ test('X402P desk settlement + ATS corridor vectors', () => {
     'only the literal ATS qualifier admits the tail');
 
   // Registry integrity: 12 canonical discriminators + legacy bare carrier +
-  // desk carrier + asset-binding carrier (SEP-0001, Suite 8).
-  assert.equal(Object.keys(DISCRIMINATOR_REGISTRY).length, 15);
+  // desk carrier + asset-binding carrier (SEP-0001, Suite 8) + uniform desk
+  // grammar carriers (X402D/X402DR, operator ruling 2026-10-09).
+  assert.equal(Object.keys(DISCRIMINATOR_REGISTRY).length, 17);
 });
 
 // ---------------------------------------------------------------------------
@@ -301,4 +304,58 @@ test('X402A asset-binding vectors', () => {
 
   // Registered asset-binding example (integration map §X402A row):
   // X402A:OUSD:ousd2mJsPEckLHcSCDxyKD7NDGARZcfLbDZkKiatYHB:6
+});
+
+// ---------------------------------------------------------------------------
+// Suite — Uniform desk grammar (X402D / X402DR): rail-exchange desk (:8425),
+// operator ruling 2026-10-09 ("grammar shouldn't matter — startpayment and
+// x402-tswp should be uniform"). The desk's ad-hoc XSYN:/XSYNP: dialect is
+// retired; these tags use the SAME validators as the rest of the family.
+// Positive fixtures carry REAL live syn1 addresses (the desk's demo payout
+// dest, credited live by the SOL sweeper on 2026-10-09) — no mocks.
+// ---------------------------------------------------------------------------
+test('X402D desk deposit + X402DR desk payout vectors', () => {
+  const INTENT = '9b2f4c8a-3f1e-4d5b-8a2c-77e1f0d3b9a4';
+  const DEST = 'syn1evu9q5xpg2mha0aau2alxtaksmgjwfkang9l60'; // live desk payout dest (L1)
+
+  // Deposit: intent uuid + dest syn1.
+  assertRoundTrip(`X402D:${INTENT}:${DEST}`, 'D', [INTENT, DEST]);
+  const builtD = buildDeskDepositMemo(INTENT, DEST);
+  assertRoundTrip(builtD, 'D', [INTENT, DEST]);
+  assert.equal(builtD, `X402D:${INTENT}:${DEST}`);
+
+  // Payout: intent uuid only, binds the desk payout tx to the deposit intent.
+  assertRoundTrip(`X402DR:${INTENT}`, 'DR', [INTENT]);
+  const builtDR = buildDeskPayoutMemo(INTENT);
+  assertRoundTrip(builtDR, 'DR', [INTENT]);
+  assert.equal(builtDR, `X402DR:${INTENT}`);
+
+  // Round-trip parity: parse(deposit) must bind to build(Payout) of the same
+  // intent — the desk flow invariant (X402DR intent === X402D intent).
+  const p = parseTswpMemo(builtD);
+  assert.equal(p.valid, true);
+  assert.equal(buildDeskPayoutMemo(p.segments[0]), builtDR);
+
+  // Fail-closed: intent not a uuid.
+  assert.equal(validateTswpMemo(`X402D:not-a-uuid:${DEST}`).valid, false,
+    'intent must be strict UUIDv4');
+  assert.equal(validateTswpMemo(`X402DR:not-a-uuid`).valid, false,
+    'payout intent must be strict UUIDv4');
+
+  // Fail-closed: dest must be bech32m syn1 charset — mock strings now fail
+  // loud (same root cause the W tightening fixed for the r13 suite).
+  assert.equal(validateTswpMemo(`X402D:${INTENT}:syn1debtor`).valid, false,
+    'dest must be a real bech32m syn1 address (charset fails closed)');
+  assert.equal(validateTswpMemo(`X402D:${INTENT}`).valid, false,
+    'dest segment is REQUIRED');
+  assert.equal(validateTswpMemo(`X402D:${INTENT}:${DEST}:extra`).valid, false,
+    'deposit takes exactly 2 segments');
+
+  // Fail-closed: extra segment on DR.
+  assert.equal(validateTswpMemo(`X402DR:${INTENT}:${DEST}`).valid, false,
+    'payout takes exactly 1 segment');
+
+  // Fail-closed: uppercase prefix (case discipline like the G vectors).
+  assert.equal(validateTswpMemo(`X402D:${INTENT}:${DEST}`.toUpperCase()).valid, false,
+    'prefix and bech32m are case-disciplined');
 });
