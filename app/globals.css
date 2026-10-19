@@ -1,17 +1,234 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600&display=swap');
 @import "tailwindcss";
 
+/* ============================================================================
+   Correspondence-sheet retheme (2026-10-19, operator directive: "match the
+   theme of bankerx+").
+
+   MECHANISM — Tailwind v4 utilities compile to var(--color-<shade>) (verified
+   in .next/static/chunks css: background-color:var(--color-amber-500)), so
+   redefining the --color-* tokens below rethemes every zinc/amber/emerald/
+   sky/rose/violet utility without touching a single component. The 157
+   arbitrary-hex dark-neutral classes (bg-[#141414], border-[#222], …) are
+   overridden with attribute-substring selectors. Unlayered CSS beats the
+   utilities layer in the cascade, so these rules win without !important.
+
+   IDENTITY — the estate's correspondence-sheet tokens:
+   LIGHT (Issue, default): paper panels on Void-grey grounds, ochre amber,
+     Ledger Red, Correspondence Blue, blue-black ink. IBM Plex Mono.
+   DARK (Carbon): same hue families as lightness stops (desk dark tokens).
+   Theme control: light is the default presentation; Carbon applies under
+   [data-theme="dark"] (set by the BankerX+ desk postMessage, or prefers-
+   color-scheme for standalone visits).
+   Single boldness: one ochre / gold accent voice; the primary CTA fills as
+   ink in Issue (light), gold in Carbon (dark) — desk ink-fill primaries.
+   ==========================================================================*/
+
 :root {
-  --background: #0a0a0a;
-  --foreground: #fafafa;
+  /* -- fx ramp: Issue (light) -- */
+  --fx-chrome: #EEF1F4;      /* page ground = bg-base */
+  --fx-paper: #FFFFFF;       /* panels = bg-panel */
+  --fx-panel-alt: #F4F6F9;   /* raised panels = bg-panel-alt */
+  --fx-panel-raise: #EAEEF2; /* hover/raise stop between alt and border */
+  --fx-line: #C9D0D8;        /* hairline */
+  --fx-hairline: #AEB8C2;    /* border-light */
+  --fx-hairline-strong: #9AA7B4;
+  --fx-ink: #141C24;         /* text-main */
+  --fx-bright: #0A0F16;      /* text-bright */
+  --fx-soft: #333E4A;        /* text-soft */
+  --fx-mid: #47525E;         /* text-mid */
+  --fx-muted: #5B6773;       /* text-muted */
+  --fx-sub: #6E7B88;         /* text-sub */
+  --fx-amber: #7A5200;       /* ochre accent */
+  --fx-amber-bright: #5E3D00; /* hover on ochre text deepens, never brightens */
+  --fx-amber-mid: #8A6200;
+  --fx-amber-line: #B9A27D;  /* ochre-at-35% hairline (color-mix stamps) */
+  --fx-emerald: #166B44;
+  --fx-emerald-line: #9EC3B0;
+  --fx-sky: #1C4F86;         /* Correspondence Blue */
+  --fx-sky-line: #9DB5CC;
+  --fx-rose: #A61E2C;        /* Ledger Red */
+  --fx-rose-line: #CE9CA3;
+  --fx-chip: #E2E7EC;        /* neutral chip fill (zinc-800's fill jobs) */
+  --fx-fill-accent: #141C24;       /* primary CTA fill: ink in Issue */
+  --fx-fill-accent-hover: #2A3642;
+  --fx-on-fill: #FFFFFF;     /* text on ink/ochre/gold fills */
+  --fx-on-neutral: #141C24;  /* "text-white on a neutral panel" = ink here */
+  --fx-scrim: #141C24;
+  /* -- arbitrary-hex dark neutrals, remapped -- */
+  --hx-deep: #EEF1F4;        /* #080808…#131313 chrome grounds */
+  --hx-top: #FFFFFF;         /* #141414/#161616/#181818 panels */
+  --hx-hi: #F4F6F9;          /* #1a1a1a…#262626 raised fills */
+  --hx-line: #C9D0D8;        /* #1a1a1a…#2c2c2c hairlines */
+  --hx-line-strong: #AEB8C2; /* #333 strongest hairline */
+  color-scheme: light;
+  /* Tailwind v4 token overrides (utilities read these) */
+  --background: var(--fx-chrome);
+  --foreground: var(--fx-ink);
+  --color-zinc-100: var(--fx-bright);
+  --color-zinc-200: var(--fx-ink);
+  --color-zinc-300: var(--fx-soft);
+  --color-zinc-400: var(--fx-mid);
+  --color-zinc-500: var(--fx-muted);
+  --color-zinc-600: var(--fx-sub);
+  --color-zinc-700: var(--fx-hairline-strong);
+  --color-zinc-800: var(--fx-chip);
+  --color-amber-200: var(--fx-amber-bright);
+  --color-amber-300: var(--fx-amber);
+  --color-amber-400: var(--fx-amber);
+  --color-amber-500: var(--fx-amber);
+  --color-amber-600: var(--fx-amber-mid);
+  --color-amber-700: var(--fx-amber-line);
+  --color-amber-800: var(--fx-amber-line);
+  --color-amber-900: var(--fx-amber-line);
+  --color-amber-950: var(--fx-amber);
+  --color-emerald-300: var(--fx-emerald);
+  --color-emerald-400: var(--fx-emerald);
+  --color-emerald-500: var(--fx-emerald);
+  --color-emerald-800: var(--fx-emerald-line);
+  --color-emerald-900: var(--fx-emerald-line);
+  --color-emerald-950: var(--fx-emerald);
+  --color-sky-300: var(--fx-sky);
+  --color-sky-400: var(--fx-sky);
+  --color-sky-500: var(--fx-sky);
+  --color-sky-800: var(--fx-sky-line);
+  --color-sky-900: var(--fx-sky-line);
+  --color-sky-950: var(--fx-sky);
+  --color-rose-200: var(--fx-rose);
+  --color-rose-300: var(--fx-rose);
+  --color-rose-400: var(--fx-rose);
+  --color-rose-500: var(--fx-rose);
+  --color-rose-800: var(--fx-rose-line);
+  --color-rose-900: var(--fx-rose-line);
+  --color-rose-950: var(--fx-rose);
+  --color-red-400: var(--fx-rose);
+  --color-violet-300: var(--fx-sky);  /* no violet anywhere (estate law) */
+  --color-violet-400: var(--fx-sky);
+  --color-violet-500: var(--fx-sky);
+  --color-black: var(--fx-scrim);     /* scrims + on-gold text in Carbon */
+}
+
+/* -- Carbon duplicate: lightness stops, same hue families -- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fx-chrome: #0D1114;
+    --fx-paper: #14181D;
+    --fx-panel-alt: #1A1F25;
+    --fx-panel-raise: #21272E;
+    --fx-line: #2B333B;
+    --fx-hairline: #39434D;
+    --fx-hairline-strong: #46525E;
+    --fx-ink: #E7EAEE;
+    --fx-bright: #F7F9FB;
+    --fx-soft: #C3CAD1;
+    --fx-mid: #A9B2BC;
+    --fx-muted: #8B95A1;
+    --fx-sub: #6E7883;
+    --fx-amber: #C9A04E;
+    --fx-amber-bright: #E9CD90;
+    --fx-amber-mid: #A5813C;
+    --fx-amber-line: #8A6B31;
+    --fx-emerald: #3F9E6E;
+    --fx-emerald-line: #234A36;
+    --fx-sky: #5E93C6;
+    --fx-sky-line: #2B3D4E;
+    --fx-rose: #C4524F;
+    --fx-rose-line: #5A2C2D;
+    --fx-chip: #1B2127;
+    --fx-fill-accent: #C9A04E;      /* gold fill in Carbon, dark text */
+    --fx-fill-accent-hover: #DDA952;
+    --fx-on-fill: #101418;
+    --fx-on-neutral: #F7F9FB;
+    --fx-scrim: #101418;
+    --hx-deep: #0D1114;
+    --hx-top: #14181D;
+    --hx-hi: #1A1F25;
+    --hx-line: #2B333B;
+    --hx-line-strong: #39434D;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --fx-chrome: #0D1114;
+  --fx-paper: #14181D;
+  --fx-panel-alt: #1A1F25;
+  --fx-panel-raise: #21272E;
+  --fx-line: #2B333B;
+  --fx-hairline: #39434D;
+  --fx-hairline-strong: #46525E;
+  --fx-ink: #E7EAEE;
+  --fx-bright: #F7F9FB;
+  --fx-soft: #C3CAD1;
+  --fx-mid: #A9B2BC;
+  --fx-muted: #8B95A1;
+  --fx-sub: #6E7883;
+  --fx-amber: #C9A04E;
+  --fx-amber-bright: #E9CD90;
+  --fx-amber-mid: #A5813C;
+  --fx-amber-line: #8A6B31;
+  --fx-emerald: #3F9E6E;
+  --fx-emerald-line: #234A36;
+  --fx-sky: #5E93C6;
+  --fx-sky-line: #2B3D4E;
+  --fx-rose: #C4524F;
+  --fx-rose-line: #5A2C2D;
+  --fx-chip: #1B2127;
+  --fx-fill-accent: #C9A04E;
+  --fx-fill-accent-hover: #DDA952;
+  --fx-on-fill: #101418;
+  --fx-on-neutral: #F7F9FB;
+  --fx-scrim: #101418;
+  --hx-deep: #0D1114;
+  --hx-top: #14181D;
+  --hx-hi: #1A1F25;
+  --hx-line: #2B333B;
+  --hx-line-strong: #39434D;
+  color-scheme: dark;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: 'IBM Plex Mono', 'Cascadia Code', 'Consolas', monospace;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Colosseum cross-link — slow yellow beacon */
+/* ---- CTA fills: ink in Issue, gold in Carbon; on-fill text follows ---- */
+.bg-amber-500 { background-color: var(--fx-fill-accent); }
+.bg-amber-400 { background-color: var(--fx-fill-accent-hover); }
+.bg-amber-500.text-black,
+.bg-amber-400.text-black,
+.bg-emerald-500.text-black,
+.bg-sky-500.text-black { color: var(--fx-on-fill); }
+/* "text-white" on a neutral arbitrary fill is the ink voice in Issue */
+[class*="bg-["].text-white { color: var(--fx-on-neutral); }
+.bg-zinc-800.text-white { color: var(--fx-on-neutral); }
+/* hover into a solid 900-tint (chip hover): keep the pair legible */
+[class*="hover:bg-amber-9"]:hover,
+[class*="hover:bg-emerald-9"]:hover,
+[class*="hover:bg-sky-9"]:hover { color: var(--fx-on-fill); }
+/* one raw deep-bg chip pairs text with its own hue family */
+.bg-sky-950.text-sky-400 { color: var(--fx-on-fill); }
+
+/* ---- arbitrary-hex dark neutrals → correspondence ramp ---- */
+[class*="bg-[#080808]"], [class*="bg-[#0a0a0a]"], [class*="bg-[#0b0b0b]"],
+[class*="bg-[#0c0c0c]"], [class*="bg-[#0d0d0d]"], [class*="bg-[#0e0e0e]"],
+[class*="bg-[#0f0f0f]"], [class*="bg-[#111]"],  [class*="bg-[#111111]"],
+[class*="bg-[#131313]"] { background-color: var(--hx-deep); }
+[class*="bg-[#141414]"], [class*="bg-[#161616]"], [class*="bg-[#181818]"],
+[class*="bg-[#1c1c1c]"] { background-color: var(--hx-top); }
+[class*="bg-[#1a1a1a]"], [class*="bg-[#1e1e1e]"], [class*="bg-[#1f1f1f]"],
+[class*="bg-[#222]"],    [class*="bg-[#222222]"] { background-color: var(--hx-hi); }
+[class*="border-[#333]"], [class*="border-[#2c2c2c]"],
+[class*="border-[#2a2a2a]"] { border-color: var(--hx-line-strong); }
+[class*="border-[#222222]"], [class*="border-[#222]"],
+[class*="border-[#262626]"], [class*="border-[#242424]"],
+[class*="border-[#1f1f1f]"], [class*="border-[#1e1e1e]"],
+[class*="border-[#1a1a1a]"] { border-color: var(--hx-line); }
+[class*="border-[#181818]"], [class*="border-[#161616]"],
+[class*="border-[#141414]"] { border-color: var(--fx-hairline); }
+
+/* Colosseum cross-link — slow amber beacon */
 @keyframes coloBeacon {
   0%, 100% { opacity: .45; }
   50%      { opacity: 1; }
@@ -31,9 +248,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #222;
+  background: var(--fx-hairline);
   border-radius: 2px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #333;
+  background: var(--fx-hairline-strong);
 }
