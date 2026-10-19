@@ -54,8 +54,8 @@ export const RESERVE_DROPS = 1_000_000n;        // XRPL account reserve (altnet)
 export const SOURCE_BUFFER_DROPS = 5_000_000n;  // keep the receiver breathing (5 XRP)
 export const MIN_TOPUP_DROPS = 1_000_000n;      // below 1 XRP the tx is dust — skip
 export const MAX_TOPUP_DROPS = BigInt(process.env.MAX_TOPUP_DROPS || 2_000_000_000n);
-export const SETTLER_FLOOR_DROPS = BigInt(process.env.SETTLER_FLOOR_DROPS || 1_100_000_000n);   // 1,100 XRP
-export const SETTLER_TARGET_DROPS = BigInt(process.env.SETTLER_TARGET_DROPS || 1_700_000_000n); // 1,700 XRP
+export const SETTLER_FLOOR_DROPS = BigInt(process.env.SETTLER_FLOOR_DROPS || 1_000_000_000n);   // 1,000 XRP
+export const SETTLER_TARGET_DROPS = BigInt(process.env.SETTLER_TARGET_DROPS || 1_500_000_000n); // 1,500 XRP
 const TSA_LEVY = 0.005; // F-5A canonical levy — the accrual rate, log-only
 const INTERVAL_S = Number(process.env.HEARTBEAT_INTERVAL_S || 60);
 
