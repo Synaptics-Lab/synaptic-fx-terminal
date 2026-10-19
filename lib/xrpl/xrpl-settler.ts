@@ -323,10 +323,11 @@ export async function fetchLiveCorridorRecord(corridorId: string): Promise<LiveC
  * minimum (`ops/POST-REVERT-LIVEFIRE-E2E-RECEIPT-2026-10-05.md`, leg 1).
  *
  * `checkCorridorMinimumBeforeDispatch` mirrors the dispatch-time conversion
- * EXACTLY (quote ÷ live corridor fx, ×1000, floor) and lets /api/settle
- * refuse the shape as an honest 422 BEFORE the UETR claim — a below-min
- * settle never moves money and never strands a claim. The gate is fail-closed
- * on the one fact it asserts: drops < min. Every shape it cannot determine
+ * EXACTLY (quote ÷ live corridor fx, × 1,000,000 → real XRPL drops, floor)
+ * and lets /api/settle refuse the shape as an honest 422 BEFORE the UETR
+ * claim — a below-min settle never moves money and never strands a claim.
+ * The gate is fail-closed on the one fact it asserts: drops < min. Every
+ * shape it cannot determine
  * (pair resolves to no corridor; registry unreachable; entry without a
  * parseable minimum) gates NOTHING and rides the existing dispatch-time
  * honest paths — refusing on auxiliary information would brick settles the
@@ -347,15 +348,18 @@ export function evaluateCorridorMinimum(input: {
   quoteAmount: number;
 }): CorridorMinimumCheck {
   const xrplAmount = input.quoteAmount / parseFloat(input.fx);
-  const drops = Math.floor(xrplAmount * 1000);
+  // Real XRPL drops (operator ruling 2026-10-19, ops/SETTLER-LEG-SCALE-DECODE-2026-10-19.md):
+  // 1 XRP = 1,000,000 drops. The former ×1000 mirror under-scaled every leg
+  // 1,000× vs real rail money; both this mirror and dispatch now speak real
+  // drops so the registry minimum compares like against like.
+  const drops = Math.floor(xrplAmount * 1_000_000);
   if (drops < input.minDrops) {
     return {
       ok: false,
       reason: "below_corridor_minimum",
       detail:
         `corridor ${input.corridorId} minimum is ${input.minDrops} drops; this settle would deliver ${drops} drops ` +
-        `(quote ${input.quoteAmount} ÷ corridor fx ${input.fx} × 1000). The relayer honestly skips below-corridor-minimum ` +
-        `legs — the XRPL money would move and NEVER be recorded on L1 (pacs.002 stays Acsp forever). ` +
+        `(quote ${input.quoteAmount} ÷ corridor fx ${input.fx} × 1,000,000 → real XRPL drops). The relayer honestly skips below-corridor-minimum legs — the XRPL money would move and NEVER be recorded on L1 (pacs.002 stays Acsp forever). ` +
         `Raise the instructed amount above the minimum and resend.`,
     };
   }
@@ -510,8 +514,9 @@ export async function checkRailReadinessBeforeClaim(params: {
   } catch {
     return { ok: true }; // registry unavailable/disabled/invalid-fx → the dispatch-time honest path, unchanged
   }
-  // The exact floor the dispatch-time branch computes: quote ÷ corridor fx ×1000.
-  const legDrops = Math.floor((params.quoteAmount / parseFloat(rec.fx)) * 1000);
+  // The exact floor the dispatch-time branch computes: quote ÷ corridor fx × 1,000,000 (real XRPL drops —
+  // same scale the harness corridor + L1 settle use: 1,000,000 drops = 1 XRP).
+  const legDrops = Math.floor((params.quoteAmount / parseFloat(rec.fx)) * 1_000_000);
   if (!Number.isFinite(legDrops) || legDrops <= 0) return { ok: true }; // named at dispatch, unchanged
   const settlerAddress = readSettlerAddressSafe(params.settlerKeyPath);
   if (!settlerAddress) return { ok: true }; // key shape/load path's business, unchanged
@@ -571,7 +576,8 @@ export async function dispatchXrplSettlement(params: {
    * quoteAmount / corridorFx XRP from the LIVE corridor registry
    * (syn_listCorridors; the corridor's fx_rate is operator-set, so the
    * provenance renders "operator", never "oracle"). Absent → legacy
-   * semantics: the instructed amount IS the XRP amount (1:1000 → drops).
+   * semantics: the instructed amount IS the XRP amount (1:1,000,000 → real
+   * XRPL drops — 1 XRP = 1,000,000 drops, operator ruling 2026-10-19).
    */
   quoteAmount?: number;
   /** F-9A: attestation root leading hex bound into the memo. */
@@ -608,7 +614,11 @@ export async function dispatchXrplSettlement(params: {
   if (!Number.isFinite(xrplAmount) || xrplAmount <= 0 || xrplAmount > 1e9) {
     throw new Error(`amount_out_of_domain: ${xrplAmount} — instructed amount outside (0, 1e9]; refusing (no clamp, no fabricated full-amount receipt)`);
   }
-  const drops = Math.floor(xrplAmount * 1000);
+  // Real XRPL drops (operator ruling 2026-10-19, ops/SETTLER-LEG-SCALE-DECODE-2026-10-19.md):
+  // 1 XRP = 1,000,000 drops. The former ×1000 conversion moved legs 1,000×
+  // under-scale vs real rail money; the gate mirrors (:517) and the D-A
+  // corridor-minimum mirror (:354) share this exact scale.
+  const drops = Math.floor(xrplAmount * 1_000_000);
   if (drops <= 0) throw new Error(`amount_out_of_domain: ${xrplAmount} converts to ${drops} drops — refusing`);
 
   const client = new Client(XRPL_WS_ENDPOINT);
