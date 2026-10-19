@@ -45,11 +45,14 @@ export default function TerminalPage() {
       <header className="flex items-center justify-between px-3 py-1.5 border-b border-[#1a1a1a] bg-[#0c0c0c] shrink-0 text-[10px] font-mono">
         {/* Left: Terminal Identity & Trilateral Standard */}
         <div className="flex items-center gap-3">
-          <Tooltip content="Open-source post-trade DvP settlement reference clearinghouse for FINOS TraderX">
-            <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold tracking-widest uppercase">
+          <Tooltip content="Open the integrated BankerX+ estate — Treasury desk, settlement rails, agent floor (mirrored on this host at /bankerx/)">
+            <a
+              href="/bankerx/"
+              className="flex items-center gap-1.5 px-1.5 py-0.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold tracking-widest uppercase hover:bg-amber-500/20 hover:border-amber-400 transition-colors cursor-pointer"
+            >
               <Terminal className="w-3 h-3" />
               <span>BANKERX REFERENCE</span>
-            </div>
+            </a>
           </Tooltip>
 
           <div className="hidden lg:flex items-center gap-2 text-zinc-500">
