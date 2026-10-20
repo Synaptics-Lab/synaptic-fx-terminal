@@ -1,11 +1,11 @@
 # Colosseum Radar Hackathon — Judges Fast-Path & Verification Flow
 
-> **Project:** BankerX (Project #14936)  
-> **Track:** Payments / DeFi / Infrastructure / Agent Track  
+> **Project:** BankerX+ (Project #14936)  
+> **Track:** Solana Ecosystem (World's Fair format — no use-case tracks; the XRPL/Synaptic legs are evidence rails, not tracks)  
 > **Live Demo Video (90s):** [https://youtu.be/ZMCEc2Jge4c](https://youtu.be/ZMCEc2Jge4c)  
 > **Pitch Video (3m):** [https://youtu.be/o92UFXH7dI4](https://youtu.be/o92UFXH7dI4)  
-> **Production Terminal:** [https://terminal.synapticchain.xyz](https://terminal.synapticchain.xyz)  
-> **Live TraderX Blotter:** [https://traderx.synapticchain.xyz/angular/](https://traderx.synapticchain.xyz/angular/)  
+> **BankerX+ Desktop (of record):** [https://terminal.synapticchain.xyz](https://terminal.synapticchain.xyz) — the same desktop also serves at [traderx.synapticchain.xyz](https://traderx.synapticchain.xyz) (2026-10-20 estate consolidation; the separate traderX blotter UI was retired, its FINOS conformance lineage lives in the traderX repo's `feature/016…` branch and PR #470)  
+> **Evidentiary Explorer:** [https://explorer.synapticchain.xyz](https://explorer.synapticchain.xyz) — invariant stamps / 44-method coverage matrix / checkpoint proofs, every claim clickable to the raw JSON-RPC envelope  
 
 ---
 

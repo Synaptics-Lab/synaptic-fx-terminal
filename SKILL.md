@@ -76,15 +76,21 @@ Instead of paying bilateral gross escrow friction on every trade, fee deltas net
 
 ---
 
-## 5. FINOS TraderX Front-Office Integration
+## 5. FINOS TraderX Interop (desktop-agent live)
 
-For trading desks and human-in-the-loop workflows:
-
-1. Open the FINOS reference blotter: `https://traderx.synapticchain.xyz/angular/`
-2. Select any currency pair row and click **Settle**.
-3. The trade raises the **FDC3 `StartPayment` intent** (Linux Foundation PR #2204, merged into `finos/FDC3:main` 2026-10-08).
-4. BankerX auto-spawns beside the blotter with the UETR and trade context pre-loaded.
-5. Upon trilateral settlement, the blotter row automatically flips `PNDG → SETTLED` and persists across browser reloads.
+1. The raise path of record is the FDC3 desktop agent itself: a `StartPayment` intent raised
+   at any estate host is re-targeted onto the **live** BankerX+ desk, which opens already
+   populated — measured **8 ms** round-trip (`raiseResult {"ms":8,"ok":true}`), full
+   desktop-agent (WCP) round-trip in the trace, no second tab spawned.
+2. The trade carries the **FDC3 `StartPayment` intent / `fdc3.payment` context** (Linux
+   Foundation PR #2204, merged into `finos/FDC3:main` 2026-10-08).
+3. Upon trilateral settlement the row flips `PNDG → SETTLED` and persists across reloads.
+4. The FINOS conformance flow was driven against the traderX reference blotter — lineage
+   preserved in the traderX repo's `feature/016-post-trade-settlement-bankerx` branch and
+   [PR #470](https://github.com/finos/traderX/pull/470) (finITe 131/132 ×2). On 2026-10-20
+   the separate blotter UI was retired as a product surface (estate consolidation: BankerX+
+   serves at traderx/terminal/bankerx/bankerxplus hostnames); the conformance code and
+   history remain in the repo.
 
 ---
 

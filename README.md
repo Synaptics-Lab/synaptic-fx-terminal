@@ -1,6 +1,6 @@
-# Synaptic FX Terminal — BankerX
+# Synaptic FX Terminal — BankerX+
 
-> **Institutional FX Settlement · Trilateral Atomic Rails · FINOS FDC3 3.0**
+> **All-In-One Institutional Desktop · Trilateral Atomic Rails · FINOS FDC3 3.0**
 
 [![FINOS - Incubating](https://cdn.jsdelivr.net/gh/finos/contrib-toolbox@master/images/badge-incubating.svg)](https://finos.org)
 [![FDC3 3.0 Compliant](https://img.shields.io/badge/FDC3-3.0%20Desktop%20Agent%20Bridging-blue)](https://fdc3.finos.org)
@@ -18,10 +18,16 @@
 
 ## Live Entry — Colosseum Radar Submission
 
-Everything in this repository runs live at **[colosseum.synapticchain.xyz](https://colosseum.synapticchain.xyz)**:
+Everything in this repository runs live — **BankerX+ is the desktop of record** (as of
+2026-10-20 it serves at terminal, bankerx, bankerxplus AND traderx hostnames; the separate
+traderX blotter UI was retired as redundant — its FINOS conformance lineage lives in the
+traderX repo's `feature/016…` branch and PR #470):
 
 | Path | What it is |
 |---|---|
+| [terminal.synapticchain.xyz](https://terminal.synapticchain.xyz) | **BankerX+ desktop of record** — full institutional desk, run the judge path below |
+| [traderx.synapticchain.xyz](https://traderx.synapticchain.xyz) | The same desktop (estate consolidation: this hostname now serves BankerX+) |
+| [explorer.synapticchain.xyz](https://explorer.synapticchain.xyz) | Evidentiary block explorer — invariant stamps, 44-method node-honesty coverage matrix, checkpoint proof pages |
 | [`/`](https://colosseum.synapticchain.xyz/) | Sovereign clearinghouse console — live settlement desk |
 | [`/demo`](https://colosseum.synapticchain.xyz/demo/) | Nine-stage live-fire settlement demo across all three rails |
 | [`/can`](https://colosseum.synapticchain.xyz/can/) | Continuous Atomic Netting on the 400 ms estate window, live |
@@ -75,22 +81,27 @@ For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
 
 | Metric | Value | Source |
 |---|---|---|
-| Settlement finality (Solana Devnet) | **382 ms** | Token-2022 PTB, Checkpoints #103467–#103470 |
+| Enclave pre-flight gate | **< 1.85 ms** | ADR-555, SIMD Bloom filter, mlock non-pageable |
+| Sanctioned-debtor refusal | **1.37 ms** | HTTP 403 pre-wire, zero drain |
+| FDC3 instant raise → populated desk | **8 ms** | `raiseResult {"ms":8,"ok":true}` on the live desk instance (2026-10-20) |
+| Trilateral settle round trip | **7–15 s** | Token-2022 commit → XRPL evidence → L1 proof → pacs.002 `Acsc` |
+| 256-lane all-lane settle | **1,280/1,280** | Live L1 testnet, all 256 lanes, 1,286 receipts/checkpoint (2026-10-20) |
+| Hostile reversed-nonce gap-fill | **2,560 txs GREEN** | 2,560 transactions in deliberately reversed nonce order (2026-10-20) |
 | 256-lane blast throughput | **4,056.2 TPS** | `stunt_5wallets_256lanes.py`, 1,280 txs / 0.316s |
 | Parallel speedup | **S = 38.56×** | Gustafson-Barsis, p = 97.78%, 0 collisions |
-| Enclave pre-flight gate | **< 1.85 ms** | ADR-555, SIMD Bloom filter, mlock non-pageable |
 | Signature throughput | **10,203 sigs/sec** | Live cluster, 5-wallet parametric burst |
 
 ---
 
 ## What Is This
 
-**BankerX** is the back-office settlement terminal in the **Synaptic FX Terminal** suite. It pairs with [FINOS TraderX](https://github.com/finos/traderX) via FDC3 3.0 Desktop Agent Bridging — a dealer raises a `StartPayment` intent (FDC3 PR #2204, merged in `finos/FDC3:main`) in the trading blotter, and BankerX atomically executes it across three independent rails simultaneously.
+**BankerX+** is the **all-in-one institutional settlement desktop** in the **Synaptic FX
+Terminal** suite. It is FDC3 3.0 desktop-agent live (per [FINOS TraderX](https://github.com/finos/traderX) interop and the merged `StartPayment` intent, FDC3 PR #2204 in `finos/FDC3:main`): a dealer raises a `StartPayment` intent and the clearing desk **opens itself already populated** — the desktop agent re-targets the running desk instead of spawning a tab, measured at **8 ms** end-to-end. The desk's executor-of-record then atomically executes the payment across three independent rails.
 
 > **Colosseum Hackathon Judges:** See [`JUDGES_FLOW.md`](JUDGES_FLOW.md) for the 30-second fast path, live Token-2022 proof, and keyless enclave verification.  
 > **Watch Live Demos:** [90-Second Technical Demo](https://youtu.be/ZMCEc2Jge4c) · [3-Minute Pitch Video](https://youtu.be/o92UFXH7dI4)  
 > ⚡ **For Autonomous AI Agents:** See [`SKILL.md`](SKILL.md) for 10-second zero-cost auto-onboarding, keyless settlement, and 400ms continuous netting streams.  
-> **Live TraderX Blotter:** Test live desktop integration at [https://traderx.synapticchain.xyz/angular/](https://traderx.synapticchain.xyz/angular/).
+> **The desktop of record:** [https://terminal.synapticchain.xyz](https://terminal.synapticchain.xyz) (also served at [traderx.synapticchain.xyz](https://traderx.synapticchain.xyz) — 2026-10-20 estate consolidation: the separate traderX blotter UI was retired as redundant; the FINOS conformance lineage remains in the traderX repo's `feature/016-post-trade-settlement-bankerx` branch and PR #470).
 
 **No bridge. No wrapped asset. Three rails settle the same instruction atomically or none settle.**
 
@@ -99,12 +110,12 @@ For the zero-setup verification path, see [`JUDGES_FLOW.md`](JUDGES_FLOW.md).
 ## Trilateral Settlement Architecture
 
 ```
-TraderX (Order Blotter)
+FDC3 blotter (any FDC3 desktop — TraderX lineage, PR #470)
     │
-    │  fdc3.raiseIntent("SettlePayment", fdc3.payment context)
-    │  ◄── FDC3 3.0 Desktop Agent Bridging ──►
+    │  fdc3.raiseIntent("StartPayment", fdc3.payment context)
+    │  ◄── FDC3 3.0 Desktop Agent Bridging (instant-retarget, 8 ms) ──►
     ▼
-BankerX (Settlement Dashboard)
+BankerX+ (All-In-One Settlement Desktop)
     │
     │  ADR-555 Enclave Pre-Flight  <1.85ms
     │  · 65,536-bit SIMD Bloom filter sanctions screen
@@ -115,7 +126,7 @@ BankerX (Settlement Dashboard)
     ├──► Solana Token-2022
     │      RequiredMemoTransfers · ISO 20022 UETR embedded
     │      sysvar::instructions byte-exact PTB introspection
-    │      Atomic commit-or-rollback · 382ms finality
+    │      Atomic commit-or-rollback · trilateral receipt 7–15 s
     │
     ├──► XRPL Altnet
     │      SHAMap DENSE-16 · memo field 0x58343032
