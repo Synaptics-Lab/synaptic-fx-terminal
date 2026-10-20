@@ -774,7 +774,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         setActiveInspectorTab("pacs002");
         // Non-blocking: the outbound wire document builds off the SAME UETR
         // the receipt anchored — render it into the Wire tab alongside.
-        void fetchWireDoc(uetr, numAmount, pair.split("/")[0]);
+        // Settle-time parties flow through explicitly (stale-state race fix).
+        void fetchWireDoc(uetr, numAmount, pair.split("/")[0], debtorName, debtorAcct, creditorName, creditorAcct);
       } else if (data.adr555Report) {
         setActiveInspectorTab("enclave");
       }
@@ -942,7 +943,21 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   // would ingest. Pure compute on the bridge (:8313) — no session, no chain
   // reads, no second settlement. The bridge's named refusals (caller-supplied
   // BICFIs, field errors) pass through verbatim as the honesty surface.
-  const fetchWireDoc = async (wireUetr: string, amt: number, ccy: string) => {
+  //
+  // Party context flows from runSettlement's params, NOT component state:
+  // the intent path mirrors resolved syn1 accounts into the ticket just
+  // before executing, and reading state here raced that commit — the wire
+  // build went out with the pre-settle (empty) ticket and refused. The
+  // settle-time parties are the settle-time truth, carried to the end.
+  const fetchWireDoc = async (
+    wireUetr: string,
+    amt: number,
+    ccy: string,
+    wireDebtorName: string,
+    wireDebtorAcct: string,
+    wireCreditorName: string,
+    wireCreditorAcct: string
+  ) => {
     setWireLoading(true);
     setWireError(null);
     try {
@@ -954,8 +969,8 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             uetr: wireUetr,
             amount: amt.toFixed(2),
             currency: ccy,
-            debtor: { name: debtorName, account: debtorAcct },
-            creditor: { name: creditorName, account: creditorAcct },
+            debtor: { name: wireDebtorName, account: wireDebtorAcct },
+            creditor: { name: wireCreditorName, account: wireCreditorAcct },
           },
         }),
         signal: AbortSignal.timeout(12_000),
