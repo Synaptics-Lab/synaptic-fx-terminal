@@ -878,6 +878,25 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         } catch {}
       }
 
+      if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+        // Desk-embed path (2026-10-20): when the terminal runs INSIDE the
+        // estate desk (F1 iframe), the opener chain doesn't reach the blotter
+        // — the desk does. The status payload rides to the parent estate
+        // window (origin-scoped), whose desk-side FDC3 client broadcasts it
+        // over the real user channel and echoes it to the blotter's opener.
+        // The parent's origin is one of the estate roots that serve the desk.
+        const PARENT_TARGET_ORIGINS = [
+          "https://bankerx.synapticchain.xyz",
+          "https://bankerxplus.synapticchain.xyz",
+          "https://terminal.synapticchain.xyz",
+        ];
+        try {
+          for (const targetOrigin of PARENT_TARGET_ORIGINS) {
+            window.parent.postMessage(statusPayload, targetOrigin);
+          }
+        } catch {}
+      }
+
       // Angular v12 real-DA round trip: also broadcast the settlement outcome
       // over the REAL FDC3 protocol so the blotter's addContextListener
       // (registered on the Desktop Agent API) receives it desk-sourced.
