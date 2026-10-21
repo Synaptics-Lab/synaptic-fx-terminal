@@ -58,27 +58,25 @@ export function IntroModal({ isOpen, onClose }: IntroModalProps) {
               <span>What You Are Looking At</span>
             </div>
             <p className="text-zinc-400 text-[10.5px]">
-              <strong>BankerX</strong> is the settlement side of this Colosseum Radar submission: a post-trade DvP clearinghouse executing the FINOS FDC3 3.0 <code className="text-amber-300">StartPayment</code> intent. <strong>TraderX</strong> is the front office that captures orders; this terminal is the desk that clears them against real rails under ISO 20022 <code className="text-zinc-300">pacs.008</code> initiation and <code className="text-zinc-300">pacs.002</code> receipts.
+              <strong>BankerX</strong> is the settlement side of this Colosseum Radar submission: a post-trade DvP clearinghouse executing the FINOS FDC3 3.0 <code className="text-amber-300">StartPayment</code> intent — and this one desk does the whole flow end to end: capture, dispatch, enclave pre-flight, <code className="text-zinc-300">pacs.008</code> initiation, and <code className="text-zinc-300">pacs.002</code> (ACSC) receipts against real rails. The FINOS TraderX blotter UI is retired — its FDC3-conformance lineage lives in the TraderX repo and PR #470 below — so nothing external is required to run the demo.
             </p>
           </div>
 
           {/* Judge fast path — where to click */}
           <div className="bg-[#111] border border-[#222] p-3 space-y-2">
             <span className="text-[9.5px] uppercase tracking-wider text-zinc-500 font-bold">
-              Judge Flow — Open the Blotter
+              Judge Flow — This Desk, End to End
             </span>
             <p className="text-zinc-400 text-[10.5px]">
-              The <strong>TraderX</strong> blotter is wired directly to this desk — the button below opens it in a new tab. Place a trade and click <em>Settle</em>: the FDC3 <code className="text-zinc-300">StartPayment</code> intent carrying the SWIFT UETR lands here, runs the enclave pre-flight, initiates <code className="text-zinc-300">pacs.008</code> settlement, and returns the <code className="text-zinc-300">pacs.002</code> receipt into the blotter below.
+              Enter the terminal below: the clearing panel on this same page takes a payment from intent to rail receipt — enclave pre-flight, <code className="text-zinc-300">pacs.008</code> initiation, and the <code className="text-zinc-300">pacs.002</code> (ACSC) answer surfaced with its explorer link. No second tab, no front-office UI, no external desk needed.
             </p>
-            <a
-              href="https://traderx.synapticchain.xyz/angular/"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase tracking-wider text-[10.5px] transition-colors"
+            <button
+              onClick={handleClose}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold uppercase tracking-wider text-[10.5px] transition-colors cursor-pointer"
             >
-              <span>Open the TraderX Blotter — New Tab</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
+              <span>Open the Clearing Panel — Right Here</span>
+              <Terminal className="w-3.5 h-3.5" />
+            </button>
             <p className="text-[10.5px] text-zinc-300 border border-amber-700/50 bg-amber-950/20 p-2">
               The desk processes exactly <strong>one</strong> settlement — a live single transaction, kept minimal and safe to run. Every trade mints a fresh SWIFT UETR, and a settled UETR is never executed twice: resubmitting the same UETR is <strong>refused by design</strong>. That refusal is the product — replay and double-settlement protection.
             </p>
@@ -109,10 +107,10 @@ export function IntroModal({ isOpen, onClose }: IntroModalProps) {
             <div className="bg-[#111] border border-[#222] p-3 space-y-1.5">
               <div className="flex items-center gap-1.5 text-zinc-200 font-bold text-[10.5px]">
                 <Terminal className="w-3.5 h-3.5 text-amber-400" />
-                <span>Tier 1: Front Office</span>
+                <span>Tier 1: Capture</span>
               </div>
               <p className="text-[10px] text-zinc-400">
-                TraderX executes spot trades with zero ledger dependencies — no value moves here. It captures orders and emits pure trade parameters with an RFC 4122 SWIFT UETR to the settlement desk.
+                Trade capture and FDC3 <code>StartPayment</code> dispatch both live on this desk — the clearing panel and the estate dispatch button emit RFC 4122 SWIFT UETRs with no value moves. The retired TraderX blotter remains in the repo as the FINOS conformance reference (PR #470), not a demo dependency.
               </p>
             </div>
 
