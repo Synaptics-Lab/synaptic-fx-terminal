@@ -886,9 +886,13 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         // over the real user channel and echoes it to the blotter's opener.
         // The parent's origin is one of the estate roots that serve the desk.
         const PARENT_TARGET_ORIGINS = [
+          // 2026-10-21: traderx/blotter hostnames also serve the estate root
+          // (10-20 consolidation), so they are legitimate desk origins too.
           "https://bankerx.synapticchain.xyz",
           "https://bankerxplus.synapticchain.xyz",
           "https://terminal.synapticchain.xyz",
+          "https://traderx.synapticchain.xyz",
+          "https://blotter.synapticchain.xyz",
         ];
         try {
           for (const targetOrigin of PARENT_TARGET_ORIGINS) {
