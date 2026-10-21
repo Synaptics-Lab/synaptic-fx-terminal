@@ -327,6 +327,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
   const [wireError, setWireError] = useState<string | null>(null);
   const [wireLoading, setWireLoading] = useState(false);
   const [currentUetr, setCurrentUetr] = useState<string>("");
+  const [reviewUetr, setReviewUetr] = useState<string | null>(null);
   const [currentMsgId, setCurrentMsgId] = useState<string>("");
   const [status, setStatus] = useState<"idle" | "review" | "building" | "settling" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -376,7 +377,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     // release the UETR for a genuine re-dispatch after a failed settlement)
     const seenUetrs = seenUetrsRef.current;
 
-    const handleInboundPayment = async (ctx: any) => {
+    const handleInboundPayment = async (ctx: any, opts?: { holdForReview?: boolean }) => {
       if (!ctx || !isPaymentContext(ctx)) return;
       const inboundUetr: string = ctx.id?.UETR || ctx.networkRouting?.uetr || "";
       if (inboundUetr) {
@@ -528,6 +529,18 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
         setStatus("review"); // only fall back to manual review when the context is unusable
         return;
       }
+      // Demo-dispatch hold (operator 2026-10-21): the estate press-D / D
+      // command raises a StartPayment that must be VISIBLE but must NOT book —
+      // it holds in the review modal the operator authorizes from. The UETR
+      // claimed by the dispatch is the one previewed on the modal.
+      if (opts?.holdForReview) {
+        const holdUetr = inboundUetr || mintUetrUuid();
+        setReviewUetr(holdUetr);
+        if (inboundUetr) seenUetrs.delete(inboundUetr);
+        setStatus("review");
+        console.info("[BankerX] StartPayment held for desk review (demo dispatch — nothing books until authorized)", holdUetr);
+        return;
+      }
       runSettlement({
         amount: inboundAmount,
         pair: inboundPair,
@@ -603,7 +616,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
     // Cross-window / PostMessage interop for TraderX / Sail / OpenFin integration
     const messageHandler = (evt: MessageEvent) => {
       if (isPaymentContext(evt.data?.context) || isPaymentContext(evt.data) || evt.data?.intent === "StartPayment") {
-        handleInboundPayment(evt.data.context || evt.data);
+        handleInboundPayment(evt.data.context || evt.data, { holdForReview: evt.data?.holdForReview === true });
       }
     };
     window.addEventListener("message", messageHandler);
@@ -636,8 +649,23 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       return;
     }
     setErrorMsg("");
+    // UETR preview law (operator 2026-10-21): the settle modal shows the
+    // SWIFT UETR the dispatch will claim — one fresh RFC 4122 mint per
+    // review (each review opens a new trade). The dispatch reuses exactly
+    // this UUID via params.uetr, so the UETR the desk shows is the UETR
+    // the ledger claims; the duplicate-UETR refusal stays the product.
+    setReviewUetr(mintUetrUuid());
     setStatus("review");
   };
+
+  /** RFC 4122 v4 SWIFT UETR — the single mint used everywhere a fresh UETR
+   * is previewed or claimed (review modal + dispatch fallback). */
+  const mintUetrUuid = () =>
+    "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
 
   /** Settlement parameters — either from operator state (manual desk) or from
    * an inbound FDC3 StartPayment context (attestation-authorized auto-execution). */
@@ -675,11 +703,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       .padStart(4, "0");
     const msgId = `SYN-FINOS-${dateStr}-${randStr}`;
 
-    const uetr = params.uetr || "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
+    const uetr = params.uetr || mintUetrUuid();
 
     setCurrentUetr(uetr);
     setCurrentMsgId(msgId);
@@ -957,7 +981,7 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
       debtorAcct,
       creditorName,
       creditorAcct,
-      uetr: currentUetr || undefined,
+      uetr: reviewUetr || currentUetr || undefined,
     });
   };
 
@@ -1550,6 +1574,15 @@ export function PaymentPanel({ onSettlement }: PaymentPanelProps) {
             <span className="text-zinc-500 uppercase">Net Settlement:</span>
             <span className="text-emerald-400 font-bold tabular-nums">
               {netAmount.toLocaleString()} {pair.split("/")[0]} (≈ {receiveAmount.toLocaleString()} {pair.split("/")[1]})
+            </span>
+          </div>
+          {/* UETR preview law (operator 2026-10-21): the modal shows the exact SWIFT
+              UETR the dispatch will claim — minted fresh at review-open, reused
+              verbatim by handleExecuteSettlement. Never mint a second one here. */}
+          <div className="flex justify-between border-b border-[#181818] pb-1.5">
+            <span className="text-zinc-500 uppercase">SWIFT UETR:</span>
+            <span className="text-cyan-300 font-mono tabular-nums" title={reviewUetr || currentUetr || ""}>
+              {(reviewUetr || currentUetr)?.slice(0, 18)}…{(reviewUetr || currentUetr)?.slice(-4) || "—"}
             </span>
           </div>
           <div className="flex justify-between pt-1">
