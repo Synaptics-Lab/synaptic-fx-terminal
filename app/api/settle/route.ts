@@ -41,6 +41,42 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const MSGID_RE = /^[A-Za-z0-9/.:\-]{1,35}$/;
 const PAIR_RE = /^[A-Z]{3}\/[A-Z]{3}$/;
 
+// ── Desk-link publisher (consolidation link restore, 2026-10-23) ──────────
+// After a rail settle is readback-confirmed, publish the settlement row into
+// the traderX blotter adapter's (:8415) durable settlement registry — the
+// desk's publish route of record (the same merge the healthy-chain harness's
+// corridor legs use; its ADR-655 rail vocabulary carries `trilateral`,
+// `xrpl`, `solana`). Server-to-server POST (no Origin → origin-guard passes),
+// strictly non-fatal: the UETR guard's settled file and the L1 record stay the
+// sources of record — a failed publish costs only the desk row, never the
+// settlement. The registry merge is terminal-immutable and idempotent, so a
+// re-publish after a retry can never double-record.
+const BLOTTER_ADAPTER_URL = process.env.ADR555_BLOTTER_ADAPTER || "http://127.0.0.1:8415";
+
+async function publishSettlementToBlotter(entry: {
+  uetr: string;
+  status: "Acsc";
+  txSignature?: string | null;
+  security: string;
+  quantity: number;
+  rail: "trilateral" | "xrpl" | "solana";
+  msgId?: string | null;
+  checkpointHeight?: number | null;
+  synapticExplorerUrl?: string | null;
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`${BLOTTER_ADAPTER_URL}/settlements`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(entry),
+      signal: AbortSignal.timeout(4_000),
+    });
+    return res.ok;
+  } catch {
+    return false; // desk row only — the settlement itself is already confirmed
+  }
+}
+
 /** Same-origin + optional bearer (F-10A). Cross-site POSTs are refused. */
 function checkAccess(req: NextRequest): string | null {
   const origin = req.headers.get("origin");
@@ -396,8 +432,40 @@ export async function POST(req: NextRequest) {
           ? Number(xrplRes.checkpointHeight)
           : await getSynapticCheckpoint();
 
+        // Desk-link (consolidation fix): publish the settled trilateral row into
+        // the :8415 registry with the full anchoring — the XRPL leg's rail tx is
+        // txSignature (64-hex ledger identity), the pacs.002 receipt msg id is
+        // the L1 anchoring of record. Anchor ruling identical to the response
+        // body below: the per-settlement checkpoint when the L1 record landed,
+        // else the live canonical checkpoint (labeled as such, never as the
+        // payment's own record).
+        void publishSettlementToBlotter({
+          uetr,
+          status: "Acsc",
+          txSignature: xrplRes.xrplTxHash,
+          security: pair,
+          quantity: netAmount,
+          rail: "trilateral",
+          msgId,
+          checkpointHeight: xrplRes.checkpointHeight || synCheckpoint || null,
+          synapticExplorerUrl:
+            xrplRes.synapticExplorerUrl ??
+            (synCheckpoint
+              ? `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/`
+              : null),
+        });
+
         finalizeSettle(uetr, {
           rail: "trilateral",
+          msgId,
+          ...(xrplRes.checkpointHeight || synCheckpoint
+            ? { checkpointHeight: xrplRes.checkpointHeight || synCheckpoint }
+            : {}),
+          ...(xrplRes.synapticExplorerUrl
+            ? { synapticExplorerUrl: xrplRes.synapticExplorerUrl }
+            : synCheckpoint
+            ? { canonicalAnchor: `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/` }
+            : {}),
           solana: { txSignature: settlement.txSignature, status: settlement.confirmationStatus },
           xrpl: { txHash: xrplRes.xrplTxHash, status: xrplRes.status },
         });
@@ -479,6 +547,24 @@ export async function POST(req: NextRequest) {
           const synCheckpoint = xrplRes.checkpointHeight
             ? Number(xrplRes.checkpointHeight)
             : await getSynapticCheckpoint();
+
+          // Desk-link (consolidation fix): publish the settled corridor row
+          // into the :8415 registry — same anchoring ruling as the response.
+          void publishSettlementToBlotter({
+            uetr,
+            status: "Acsc",
+            txSignature: xrplRes.xrplTxHash,
+            security: pair,
+            quantity: netAmount,
+            rail: "xrpl",
+            msgId,
+            checkpointHeight: xrplRes.checkpointHeight || synCheckpoint || null,
+            synapticExplorerUrl:
+              xrplRes.synapticExplorerUrl ??
+              (synCheckpoint
+                ? `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/`
+                : null),
+          });
 
           return NextResponse.json({
             ok: true,
@@ -598,7 +684,26 @@ export async function POST(req: NextRequest) {
 
       finalizeSettle(uetr, {
         rail: "solana",
+        msgId,
+        ...(synCheckpoint ? { checkpointHeight: synCheckpoint } : {}),
         solana: { txSignature: settlement.txSignature, status: settlement.confirmationStatus },
+      });
+
+      // Desk-link (consolidation fix): publish the settled Solana row into the
+      // :8415 registry. Solo-Solana has no per-settlement L1 record (honest,
+      // per F-7A) — the anchor carries the live canonical checkpoint only.
+      void publishSettlementToBlotter({
+        uetr,
+        status: "Acsc",
+        txSignature: settlement.txSignature,
+        security: pair,
+        quantity: netAmount,
+        rail: "solana",
+        msgId,
+        checkpointHeight: synCheckpoint || null,
+        synapticExplorerUrl: synCheckpoint
+          ? `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/`
+          : null,
       });
 
       return NextResponse.json({
