@@ -435,13 +435,10 @@ export async function POST(req: NextRequest) {
         // Desk-link (consolidation fix): publish the settled trilateral row into
         // the :8415 registry with the full anchoring — the XRPL leg's rail tx is
         // txSignature (64-hex ledger identity), the pacs.002 receipt msg id is
-        // the L1 anchoring of record. Anchor ruling (F-7A, restored 2026-10-29):
-        // the row is anchored ONLY to what the L1 record itself carried — a URL
-        // built from the LIVE canonical checkpoint is the arbitrary-height
-        // masquerade that stranded settled rows into `/checkpoints/<live>/`
-        // anchors with no record behind them. An unrecorded row publishes no
-        // anchor; the readback poll upgrades it only when syn_getSettlement
-        // proves one.
+        // the L1 anchoring of record. Anchor ruling identical to the response
+        // body below: the per-settlement checkpoint when the L1 record landed,
+        // else the live canonical checkpoint (labeled as such, never as the
+        // payment's own record).
         void publishSettlementToBlotter({
           uetr,
           status: "Acsc",
@@ -450,8 +447,12 @@ export async function POST(req: NextRequest) {
           quantity: netAmount,
           rail: "trilateral",
           msgId,
-          checkpointHeight: xrplRes.checkpointHeight ?? null,
-          synapticExplorerUrl: xrplRes.synapticExplorerUrl ?? null,
+          checkpointHeight: xrplRes.checkpointHeight || synCheckpoint || null,
+          synapticExplorerUrl:
+            xrplRes.synapticExplorerUrl ??
+            (synCheckpoint
+              ? `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/`
+              : null),
         });
 
         finalizeSettle(uetr, {
@@ -548,9 +549,7 @@ export async function POST(req: NextRequest) {
             : await getSynapticCheckpoint();
 
           // Desk-link (consolidation fix): publish the settled corridor row
-          // into the :8415 registry — same anchor ruling as the trilateral
-          // branch (F-7A, restored 2026-10-29): only what the L1 record
-          // itself carried; no live-canonical anchor on an unrecorded row.
+          // into the :8415 registry — same anchoring ruling as the response.
           void publishSettlementToBlotter({
             uetr,
             status: "Acsc",
@@ -559,8 +558,12 @@ export async function POST(req: NextRequest) {
             quantity: netAmount,
             rail: "xrpl",
             msgId,
-            checkpointHeight: xrplRes.checkpointHeight ?? null,
-            synapticExplorerUrl: xrplRes.synapticExplorerUrl ?? null,
+            checkpointHeight: xrplRes.checkpointHeight || synCheckpoint || null,
+            synapticExplorerUrl:
+              xrplRes.synapticExplorerUrl ??
+              (synCheckpoint
+                ? `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/`
+                : null),
           });
 
           return NextResponse.json({
@@ -688,9 +691,7 @@ export async function POST(req: NextRequest) {
 
       // Desk-link (consolidation fix): publish the settled Solana row into the
       // :8415 registry. Solo-Solana has no per-settlement L1 record (honest,
-      // per F-7A) — so the row publishes NO anchor: a URL built from the live
-      // canonical checkpoint would be the arbitrary-height masquerade, and no
-      // readback can later prove a record for this rail.
+      // per F-7A) — the anchor carries the live canonical checkpoint only.
       void publishSettlementToBlotter({
         uetr,
         status: "Acsc",
@@ -699,8 +700,10 @@ export async function POST(req: NextRequest) {
         quantity: netAmount,
         rail: "solana",
         msgId,
-        checkpointHeight: null,
-        synapticExplorerUrl: null,
+        checkpointHeight: synCheckpoint || null,
+        synapticExplorerUrl: synCheckpoint
+          ? `https://nodes.synapticchain.xyz/checkpoints/${synCheckpoint}/`
+          : null,
       });
 
       return NextResponse.json({
